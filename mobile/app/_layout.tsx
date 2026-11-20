@@ -1,6 +1,7 @@
 import "../global.css"
 import { useFonts } from "expo-font"
 import { Stack } from "expo-router"
+import { StatusBar } from "expo-status-bar"
 import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic } from "@expo-google-fonts/fraunces"
 import { Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from "@expo-google-fonts/nunito"
 
@@ -15,5 +16,10 @@ export default function RootLayout() {
 
   if (!loaded) return null
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FBEDE2" } }} />
+  return (
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FBEDE2" } }} />
+    </>
+  )
 }
