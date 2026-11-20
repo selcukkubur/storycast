@@ -46,6 +46,16 @@ export const falStatus = (env: Env, app: string, requestId: string) =>
 export const falResult = (env: Env, app: string, requestId: string) =>
   falFetch(env, `https://queue.fal.run/${app}/requests/${requestId}`).then((t) => JSON.parse(t));
 
+export async function falMetadata(env: Env, mediaUrl: string) {
+  const text = await falFetch(env, "https://fal.run/fal-ai/ffmpeg-api/metadata", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ media_url: mediaUrl }),
+  });
+  const body = JSON.parse(text) as { media: { duration: number } };
+  return { duration: Number(body.media?.duration ?? 0) };
+}
+
 export async function falUpload(env: Env, file: File) {
   const init = JSON.parse(
     await falFetch(env, "https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3", {

@@ -1,8 +1,8 @@
 import { authenticate, createAccount, planOf, pool } from "./accounts";
-import { PLANS, canStart, type Resolution } from "./credits";
-import { HttpError, json, num, now, randomId, str } from "./http";
-import { balance } from "./ledger";
-import { ALLOWED_APPS, falResult, falStatus, falSubmit, falUpload } from "./proxy";
+import { PLANS, canStart, settleRefund, type Resolution } from "./credits";
+import { HttpError, falUrl, json, num, now, randomId, str } from "./http";
+import { balance, record } from "./ledger";
+import { ALLOWED_APPS, falMetadata, falResult, falStatus, falSubmit, falUpload } from "./proxy";
 
 export interface Env {
   DB: D1Database;
@@ -127,6 +127,38 @@ export function createApp() {
           if (!(file instanceof File)) throw new HttpError(400, "file is required");
           if (file.size > 20 * 1024 * 1024) throw new HttpError(413, "file is larger than 20 MB");
           return json(await falUpload(env, file));
+        }
+
+        const settlePath = path.match(/^\/jobs\/([A-Za-z0-9]+)\/settle$/);
+        if (req.method === "POST" && settlePath) {
+          const account = await authenticate(env, req);
+          const job = await env.DB.prepare("SELECT id, account, pool, minutes, resolution, credits, settled FROM jobs WHERE id = ?")
+            .bind(settlePath[1])
+            .first<{ id: string; account: string; pool: string; minutes: number; resolution: Resolution; credits: number; settled: number }>();
+          if (!job || job.account !== account.id) throw new HttpError(404, "job not found");
+          if (job.settled) return json({ refund: 0, creditsLeft: await balance(env, job.pool), already: true });
+
+          const b = await body(req);
+          const outcome = str(b.outcome, 10);
+          let refund = 0;
+          let videoUrl: string | null = null;
+
+          if (outcome === "error") {
+            refund = job.credits;
+          } else if (outcome === "done") {
+            videoUrl = falUrl(b.videoUrl);
+            if (!videoUrl) throw new HttpError(400, "videoUrl must be a fal media URL");
+            const { duration } = await falMetadata(env, videoUrl);
+            refund = settleRefund(job.minutes, job.resolution, duration);
+          } else {
+            throw new HttpError(400, "outcome must be done or error");
+          }
+
+          if (refund > 0) await record(env, job.pool, "refund", refund, `refund:${job.id}`, job.id);
+          await env.DB.prepare("UPDATE jobs SET status = ?, settled = 1, video_url = ? WHERE id = ? AND settled = 0")
+            .bind(outcome, videoUrl, job.id)
+            .run();
+          return json({ refund, creditsLeft: await balance(env, job.pool) });
         }
 
         throw new HttpError(404, "not found");
