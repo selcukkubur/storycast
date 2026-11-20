@@ -1,0 +1,15 @@
+{
+  "name": "storycast-cost-eval",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Side-by-side cost/quality evaluation of alternative fal video models for Storycast shots",
+  "type": "module",
+  "scripts": {
+    "eval": "node eval.mjs",
+    "dry": "node eval.mjs --dry-run",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

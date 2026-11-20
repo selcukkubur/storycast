@@ -1,0 +1,54 @@
+{
+  "prompts": [
+    {
+      "id": "mouse-walks",
+      "text": "The little mouse in a claymation world walks along a shelf of giant pencils, soft studio light, gentle camera push-in. Sound: soft ambience. No dialogue, no speech, no music. No readable text.",
+      "ref": "web/public/static/characters/pip.jpg"
+    },
+    {
+      "id": "wind-over-wheat",
+      "text": "Wide shot: wind rolls over a wheat field at golden hour, gentle parallax, slow lateral camera move. Sound: soft ambience. No dialogue, no speech, no music. No readable text."
+    },
+    {
+      "id": "robot-explains",
+      "text": "A tidy paper robot gestures at a floating diagram in a bright workshop, keeping the same design, colors and props, medium shot. Sound: soft ambience. No dialogue, no speech, no music. No readable text.",
+      "ref": "web/public/static/characters/otto.jpg"
+    },
+    {
+      "id": "storm-approach",
+      "text": "A sky-watcher looks up as storm clouds gather over a hill, distant lightning, slow tilt up. Sound: soft ambience. No dialogue, no speech, no music. No readable text.",
+      "ref": "web/public/static/characters/kiko.jpg"
+    },
+    {
+      "id": "harbor-morning",
+      "text": "A calm harbor at sunrise, fishing boats rocking gently, gulls crossing the frame, static shot. Sound: soft ambience. No dialogue, no speech, no music. No readable text."
+    },
+    {
+      "id": "laboratory-detail",
+      "text": "A close-up of glass beakers bubbling on a lab bench, warm light, shallow depth of field, no people. Sound: soft ambience. No dialogue, no speech, no music. No readable text."
+    }
+  ],
+  "candidates": [
+    {
+      "name": "h3-max-768",
+      "endpoint": "minimax/h3-max/reference-to-video",
+      "price_per_second": 0.08,
+      "uses_reference": true,
+      "input": { "aspect_ratio": "16:9", "resolution": "768P", "duration": 6, "prompt_expansion_mode": "disabled" }
+    },
+    {
+      "name": "h3-highspeed-480",
+      "endpoint": "minimax/h3/highspeed/reference-to-video",
+      "price_per_second": 0.04,
+      "uses_reference": true,
+      "input": { "aspect_ratio": "16:9", "resolution": "480P", "duration": 6, "prompt_expansion_mode": "disabled" }
+    },
+    {
+      "name": "grok-imagine-1.5-lite",
+      "endpoint": "xai/grok-imagine-video-1.5-lite",
+      "price_per_second": 0.02,
+      "uses_reference": true,
+      "input": { "aspect_ratio": "16:9", "duration": 6 }
+    }
+  ]
+}
