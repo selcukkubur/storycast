@@ -7,7 +7,7 @@ import { ChevronLeft, Download, MessageCircle, Pause, Play, RotateCw, Share2, X 
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
-import { FILMS, NARRATORS } from "@/src/flows/shared/mock-data"
+import { FILMS } from "@/src/flows/shared/mock-data"
 
 type Step = "library" | "player" | "share"
 
@@ -37,7 +37,6 @@ export default function WatchFlow() {
   const [subtitles, setSubtitles] = useState(true)
 
   const film = useMemo(() => FILMS.find((f) => f.id === filmId) ?? FILMS[0], [filmId])
-  const narrator = NARRATORS.find((n) => n.id === film.narratorId)
 
   /* SCREEN 1 — Library */
   if (step === "library") {
@@ -79,7 +78,6 @@ export default function WatchFlow() {
               ) : null}
               <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
                 {FILMS.map((f) => {
-                  const n = NARRATORS.find((x) => x.id === f.narratorId)
                   return (
                     <Pressable
                       key={f.id}
@@ -91,22 +89,22 @@ export default function WatchFlow() {
                       className="w-[48%]"
                       accessibilityRole="button"
                     >
-                      <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
-                        <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
+                      <View className="overflow-hidden rounded-xl bg-night" style={CARD_SHADOW}>
+                        <Image source={f.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
                         {!f.watched ? (
-                          <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
-                            <Text className={`${EYEBROW} text-ticket`}>New</Text>
+                          <View className="absolute left-1.5 top-1.5 rounded bg-marigold px-1.5 py-0.5">
+                            <Text className="text-[10px] font-body-bold uppercase tracking-[0.5px] text-ink">New</Text>
                           </View>
                         ) : null}
-                        <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                        <View className="absolute bottom-1.5 right-2 rounded bg-night/85 px-1 py-0.5">
                           <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                         </View>
                       </View>
-                      <Text className="mt-2 font-body-semibold text-sm text-ink" numberOfLines={2}>
-                        {f.title}
+                      <Text className="mt-1.5 font-body-bold text-[14px] leading-5 text-ink" numberOfLines={2}>
+                        {f.title} {f.subtitle}
                       </Text>
-                      <Text className="text-[11px] text-ink-soft">
-                        {n?.name} · {f.created}
+                      <Text className="text-xs text-ink-soft" numberOfLines={1}>
+                        {f.styleLabel} · {f.narrator}
                       </Text>
                     </Pressable>
                   )
@@ -158,8 +156,8 @@ export default function WatchFlow() {
 
               <Text className="mt-4 font-display text-[28px] leading-8 text-ticket">{film.title}</Text>
               <HStack space="sm" className="mt-1 items-center">
-                <Text className="text-xs text-ticket/60">
-                  {narrator?.name} · {narrator?.look}
+                <Text className="text-[13px] text-ticket/85">
+                  {film.narrator} · {film.styleLabel}
                 </Text>
                 {subtitles ? (
                   <View className="rounded-full bg-ticket/10 px-2 py-0.5">

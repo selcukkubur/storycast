@@ -51,28 +51,25 @@ export const NARRATORS: Narrator[] = [
   },
 ]
 
-const posterFiles = [
-  require("../../../assets/posters/0067bf73.jpg"),
-  require("../../../assets/posters/0d581496.jpg"),
-  require("../../../assets/posters/0de626de.jpg"),
-  require("../../../assets/posters/0e5f30c6.jpg"),
-]
+
 
 export const TOPIC_CHIPS = ["Why is the sky blue?", "How do bees make honey?", "The first photograph", "How do volcanoes work?"]
 
 export const LOOKS = ["Stick figure", "Whiteboard doodle", "Watercolor anime", "Claymation", "Papercraft diorama"]
 
 export const FILMS: Film[] = [
-  { id: "kai-wind", title: "Kai and the secret of the wind", narratorId: "pip", durationSec: 63, created: "2 days ago", watched: true, category: "science", poster: posterFiles[0] },
-  { id: "stella-cable", title: "Stella and the cable under the sea", narratorId: "rose", durationSec: 62, created: "4 days ago", watched: false, category: "machines", poster: posterFiles[1] },
-  { id: "bruno-mine", title: "Bruno und der bergmannsgruß", narratorId: "otto", durationSec: 59, created: "6 days ago", watched: true, category: "history", poster: posterFiles[2] },
-  { id: "mei-kites", title: "Granny Mei and the first kites in the wind", narratorId: "rose", durationSec: 56, created: "1 week ago", watched: true, category: "history", poster: posterFiles[3] },
-  { id: "hazel-leaves", title: "Hazel and why leaves change colour", narratorId: "hazel", durationSec: 71, created: "1 week ago", watched: false, category: "nature", poster: posterFiles[4] },
-  { id: "otto-gears", title: "Otto and the tiny gears inside clocks", narratorId: "otto", durationSec: 58, created: "2 weeks ago", watched: false, category: "machines", poster: posterFiles[5] },
-  { id: "pip-volcano", title: "Pip and the volcano that made an island", narratorId: "pip", durationSec: 66, created: "2 weeks ago", watched: true, category: "nature", poster: posterFiles[0] },
-  { id: "lulu-photos", title: "Lulu and the very first photograph", narratorId: "lulu", durationSec: 61, created: "3 weeks ago", watched: true, category: "history", poster: posterFiles[1] },
-  { id: "mo-rain", title: "Mo and where rain really comes from", narratorId: "mo", durationSec: 55, created: "3 weeks ago", watched: false, category: "science", poster: posterFiles[2] },
-  { id: "rose-honey", title: "Grandma Rose and how bees make honey", narratorId: "rose", durationSec: 69, created: "1 month ago", watched: true, category: "nature", poster: posterFiles[3] },
+  { id: "10a4f1dd", title: "Nib", subtitle: "and the stick inside the pencil", narrator: "Nib", styleLabel: "Claymation", durationSec: 63, created: "2 days ago", watched: false, category: "machines", poster: require("../../../assets/posters/10a4f1dd.jpg") },
+  { id: "18d77a9d", title: "Kiko", subtitle: "and the secret life of lightning", narrator: "Kiko", styleLabel: "Watercolor anime", durationSec: 58, created: "2 days ago", watched: false, category: "science", poster: require("../../../assets/posters/18d77a9d.jpg") },
+  { id: "0067bf73", title: "Rex", subtitle: "and the bone that turned to stone", narrator: "Rex", styleLabel: "Kid's crayon", durationSec: 55, created: "4 days ago", watched: true, category: "history", poster: require("../../../assets/posters/0067bf73.jpg") },
+  { id: "14189a27", title: "Momo", subtitle: "and the chocolate tree", narrator: "Momo", styleLabel: "Claymation", durationSec: 61, created: "5 days ago", watched: false, category: "nature", poster: require("../../../assets/posters/14189a27.jpg") },
+  { id: "18572ab5", title: "Bea", subtitle: "and the great swarm vote", narrator: "Bea", styleLabel: "Colored-pencil picture book", durationSec: 57, created: "1 week ago", watched: true, category: "nature", poster: require("../../../assets/posters/18572ab5.jpg") },
+  { id: "0d581496", title: "Ada", subtitle: "and the secret of the spinning coil", narrator: "Ada", styleLabel: "Pencil sketch", durationSec: 66, created: "1 week ago", watched: false, category: "science", poster: require("../../../assets/posters/0d581496.jpg") },
+  { id: "0de626de", title: "Hazel", subtitle: "and the living soup", narrator: "Hazel", styleLabel: "Ink & watercolor", durationSec: 71, created: "2 weeks ago", watched: true, category: "nature", poster: require("../../../assets/posters/0de626de.jpg") },
+  { id: "0e5f30c6", title: "Gus", subtitle: "and the secret of staying warm", narrator: "Gus", styleLabel: "Papercraft diorama", durationSec: 59, created: "2 weeks ago", watched: false, category: "science", poster: require("../../../assets/posters/0e5f30c6.jpg") },
+  { id: "19a4ccab", title: "Lumi", subtitle: "and the invisible roads of the sky", narrator: "Lumi", styleLabel: "Brush ink", durationSec: 62, created: "3 weeks ago", watched: true, category: "history", poster: require("../../../assets/posters/19a4ccab.jpg") },
+  { id: "1b1d5e2e", title: "Wren", subtitle: "ve yerin altındaki gizli şehirler", narrator: "Wren", styleLabel: "Gouache storybook", durationSec: 68, created: "3 weeks ago", watched: false, category: "history", poster: require("../../../assets/posters/1b1d5e2e.jpg") },
+  { id: "19def244", title: "Rio", subtitle: "y el tango del puerto", narrator: "Rio", styleLabel: "Marker sketch", durationSec: 60, created: "1 month ago", watched: true, category: "machines", poster: require("../../../assets/posters/19def244.jpg") },
+  { id: "0ff2664d", title: "Bo", subtitle: "and the wiggly tooth", narrator: "Bo", styleLabel: "Kid's crayon", durationSec: 54, created: "1 month ago", watched: true, category: "nature", poster: require("../../../assets/posters/0ff2664d.jpg") },
 ]
 
 export const WALLET: Wallet = { plan: "starter", credits: 3, maxMinutes: 2, rolloverNote: "Unused tickets roll over one month, up to 6." }
