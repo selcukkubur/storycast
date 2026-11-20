@@ -15,6 +15,7 @@ module.exports = {
       },
       fontFamily: {
         display: ["Fraunces_600SemiBold"],
+        "display-italic": ["Fraunces_600SemiBold_Italic"],
         body: ["Nunito_400Regular"],
         "body-semibold": ["Nunito_600SemiBold"],
         "body-bold": ["Nunito_700Bold"],
