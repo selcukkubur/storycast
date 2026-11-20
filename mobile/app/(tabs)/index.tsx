@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react"
-import { Image, Pressable, ScrollView, View } from "react-native"
+import { Dimensions, Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown } from "react-native-reanimated"
 import { router } from "expo-router"
-import { LayoutGrid, Play, Sparkles, Ticket } from "lucide-react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { ChevronRight, LayoutGrid, Play, Sparkles, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -11,15 +12,15 @@ import { FILMS, NARRATORS, WALLET } from "@/src/flows/shared/mock-data"
 import type { FilmCategory } from "@/src/flows/shared/types"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
-const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
 const CARD_SHADOW = {
-  shadowColor: "#1B1330",
-  shadowOpacity: 0.14,
-  shadowRadius: 22,
+  shadowColor: "#0B102A",
+  shadowOpacity: 0.16,
+  shadowRadius: 24,
   shadowOffset: { width: 0, height: 14 },
-  elevation: 7,
+  elevation: 8,
 } as const
 
+const { width: SW } = Dimensions.get("window")
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 
 const FILTERS: { key: "all" | FilmCategory; label: string }[] = [
@@ -28,6 +29,13 @@ const FILTERS: { key: "all" | FilmCategory; label: string }[] = [
   { key: "science", label: "Science" },
   { key: "history", label: "History" },
   { key: "machines", label: "Machines" },
+]
+
+const TILES: { key: FilmCategory; label: string; posterIndex: number; blurb: string }[] = [
+  { key: "nature", label: "Nature", posterIndex: 4, blurb: "Leaves, bees, storms" },
+  { key: "science", label: "Science", posterIndex: 0, blurb: "Wind and weather" },
+  { key: "history", label: "History", posterIndex: 2, blurb: "Firsts and legends" },
+  { key: "machines", label: "Machines", posterIndex: 5, blurb: "Gears and wires" },
 ]
 
 function SectionHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
@@ -44,6 +52,7 @@ function SectionHeader({ title, count, children }: { title: string; count?: numb
 }
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets()
   const [filter, setFilter] = useState<"all" | FilmCategory>("all")
   const [dense, setDense] = useState(false)
 
@@ -51,186 +60,249 @@ export default function HomeScreen() {
   const heroNarrator = NARRATORS.find((n) => n.id === hero.narratorId)
   const fresh = FILMS.slice(0, 6)
   const shown = useMemo(() => (filter === "all" ? FILMS : FILMS.filter((f) => f.category === filter)), [filter])
+  const countOf = (c: FilmCategory) => FILMS.filter((f) => f.category === c).length
+
+  const heroHeight = Math.round(SW * 1.12)
 
   return (
     <View className="flex-1 bg-paper">
-      <ScrollView contentContainerClassName="pb-10">
-        <LinearGradient
-          colors={NOCTURNE}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ paddingHorizontal: 20, paddingTop: 64, paddingBottom: 44, borderBottomLeftRadius: 36, borderBottomRightRadius: 36 }}
-        >
-          <View className="absolute -right-12 top-6 h-44 w-44 rounded-full border border-marigold/20" />
-          <View className="absolute left-6 top-14 h-1.5 w-1.5 rounded-full bg-marigold/80" />
-          <View className="absolute left-24 top-24 h-1 w-1 rounded-full bg-coral/70" />
+      <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
+        <Pressable onPress={() => router.push("/watch")} accessibilityRole="button" accessibilityLabel={`Play ${hero.title}`}>
+          <View style={{ height: heroHeight }} className="relative w-full bg-night">
+            <Image source={hero.poster} className="absolute h-full w-full" resizeMode="cover" />
+            <LinearGradient
+              colors={["rgba(10,14,42,0.75)", "rgba(10,14,42,0.15)", "transparent"]}
+              style={{ position: "absolute", left: 0, right: 0, top: 0, height: 180 }}
+            />
+            <LinearGradient
+              colors={["transparent", "rgba(19,26,78,0.72)", "#131A4E"]}
+              locations={[0.35, 0.72, 1]}
+              style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.round(heroHeight * 0.62) }}
+            />
 
-          <HStack className="items-start justify-between">
-            <VStack space="xs">
-              <Text className={`${EYEBROW} text-marigold`}>The little picture house</Text>
-              <Text className="font-display text-[30px] leading-[36px] text-ticket">Tonight's programme</Text>
-              <Text className="text-[13px] text-ticket/85">{FILMS.length} films · {FILMS.filter((f) => !f.watched).length} waiting for you</Text>
-            </VStack>
-            <Pressable
-              onPress={() => router.push("/account")}
-              className="flex-row items-center gap-1.5 rounded-full border border-marigold/50 bg-ticket/10 px-3 py-1.5"
-              accessibilityRole="button"
-              accessibilityLabel="Open ticket book"
-            >
-              <Ticket size={13} stroke="#FFB627" />
-              <Text className="font-body-bold text-xs text-marigold">{WALLET.credits} tickets</Text>
-            </Pressable>
-          </HStack>
-        </LinearGradient>
+            <View style={{ paddingTop: insets.top + 12 }} className="absolute left-5 right-5 flex-row items-center justify-between">
+              <HStack space="xs" className="items-center rounded-full bg-white/10 px-3 py-1.5">
+                <Sparkles size={12} stroke="#FFB627" />
+                <Text className={`${EYEBROW} text-ticket`}>Storycast</Text>
+              </HStack>
+              <Pressable
+                onPress={() => router.push("/account")}
+                className="flex-row items-center gap-1.5 rounded-full border border-marigold/60 bg-black/25 px-3 py-1.5"
+                accessibilityRole="button"
+                accessibilityLabel="Open ticket book"
+              >
+                <Ticket size={13} stroke="#FFB627" />
+                <Text className="font-body-bold text-xs text-marigold">{WALLET.credits} tickets</Text>
+              </Pressable>
+            </View>
 
-        <Animated.View entering={FadeInDown.duration(450)}>
-          <VStack space="lg" className="-mt-8 px-5">
-            <Pressable onPress={() => router.push("/watch")} accessibilityRole="button">
-              <View className="overflow-hidden rounded-3xl bg-night" style={CARD_SHADOW}>
-                <Image source={hero.poster} className="aspect-[16/10] w-full" resizeMode="cover" />
-                <LinearGradient
-                  colors={["transparent", "rgba(20,28,87,0.55)", "rgba(13,18,60,0.95)"]}
-                  locations={[0.3, 0.65, 1]}
-                  style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 48 }}
-                >
-                  <Text className={`${EYEBROW} text-marigold`}>Continue watching</Text>
-                  <Text className="mt-1 font-display text-2xl leading-7 text-ticket" numberOfLines={2}>
-                    {hero.title}
-                  </Text>
-                  <HStack className="mt-1 justify-between">
-                    <Text className="text-xs text-ticket/85">
-                      {heroNarrator?.name} · {hero.created}
-                    </Text>
-                    <Text className={`${EYEBROW} text-marigold`}>{clock(hero.durationSec)}</Text>
-                  </HStack>
-                </LinearGradient>
-                <View className="absolute inset-0 items-center justify-center">
-                  <View
-                    className="rounded-full border-2 border-coral/70 bg-marigold p-5"
-                    style={{ shadowColor: "#000", shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}
-                  >
-                    <Play size={24} stroke="#1B1330" fill="#1B1330" />
+            <View className="absolute bottom-10 left-5 right-5">
+              <HStack space="xs" className="items-center">
+                <Text className={`${EYEBROW} text-marigold`}>Tonight's feature</Text>
+                {!hero.watched ? (
+                  <View className="-rotate-2 rounded-md bg-coral px-1.5 py-0.5">
+                    <Text className={`${EYEBROW} text-ticket`}>New</Text>
                   </View>
-                </View>
-              </View>
-            </Pressable>
-
-            <VStack space="sm">
-              <SectionHeader title="Fresh this week" count={fresh.length} />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 4 }}>
-                {fresh.map((f) => (
-                  <Pressable key={`fresh-${f.id}`} onPress={() => router.push("/watch")} className="w-36" accessibilityRole="button">
-                    <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
-                      <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                      <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
-                        <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
-                      </View>
-                      {!f.watched ? (
-                        <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
-                          <Text className={`${EYEBROW} text-ticket`}>New</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text className="mt-2 font-body-semibold text-[13px] leading-5 text-ink" numberOfLines={2}>
-                      {f.title}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </VStack>
-
-            <VStack space="sm">
-              <SectionHeader title="Family library" count={shown.length}>
+                ) : null}
+              </HStack>
+              <Text className="mt-2 font-display text-[34px] leading-[38px] text-ticket" numberOfLines={2}>
+                {hero.title}
+              </Text>
+              <HStack space="sm" className="mt-2 items-center">
+                <Text className="text-[13px] text-ticket/85">
+                  {heroNarrator?.name} · {heroNarrator?.look}
+                </Text>
+                <View className="h-1 w-1 rounded-full bg-ticket/50" />
+                <Text className="text-[13px] text-ticket/85">{clock(hero.durationSec)} min</Text>
+              </HStack>
+              <HStack space="sm" className="mt-4">
                 <Pressable
-                  onPress={() => setDense((d) => !d)}
-                  className="h-11 min-w-11 flex-row items-center justify-center gap-1.5 rounded-full border border-ink/15 bg-ticket px-3 active:bg-paper"
+                  onPress={() => router.push("/watch")}
+                  className="min-h-12 flex-row items-center gap-2 rounded-full px-6"
+                  style={{ backgroundColor: "#FFB627" }}
                   accessibilityRole="button"
-                  accessibilityLabel={dense ? "Show bigger posters" : "Show more films per row"}
                 >
-                  <LayoutGrid size={14} stroke="#22319B" />
-                  <Text className="text-xs font-body-bold text-ink">{dense ? "2-up" : "3-up"}</Text>
+                  <Play size={16} stroke="#1B1330" fill="#1B1330" />
+                  <Text className="font-body-bold text-[15px] text-ink">Play film</Text>
                 </Pressable>
-              </SectionHeader>
+                <Pressable
+                  onPress={() => router.push("/watch")}
+                  className="min-h-12 flex-row items-center rounded-full border border-ticket/40 px-5 active:bg-white/10"
+                  accessibilityRole="button"
+                >
+                  <Text className="font-body-bold text-[15px] text-ticket">Details</Text>
+                </Pressable>
+              </HStack>
+            </View>
+          </View>
+        </Pressable>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {FILTERS.map((f) => {
-                  const active = filter === f.key
-                  return (
-                    <Pressable
-                      key={f.key}
-                      onPress={() => setFilter(f.key)}
-                      className={`min-h-11 justify-center rounded-full px-4 ${active ? "bg-royal" : "border border-ink/15 bg-ticket"}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text className={`text-sm ${active ? "font-body-bold text-ticket" : "text-ink"}`}>{f.label}</Text>
-                    </Pressable>
-                  )
-                })}
-              </ScrollView>
-
-              {shown.length === 0 ? (
-                <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
-                  <Text className="font-display text-xl text-ink">Nothing here yet</Text>
-                  <Text className="mt-1 text-center text-[13px] leading-5 text-ink-soft">Make a film in this category and it will appear in the library.</Text>
+        <View className="relative -mt-6 rounded-t-[28px] bg-paper px-5 pt-5">
+          <Animated.View entering={FadeInDown.duration(420)}>
+            <VStack space="lg">
+              <Pressable onPress={() => router.push("/watch")} accessibilityRole="button" accessibilityLabel={`Resume ${hero.title}`}>
+                <View className="flex-row items-center gap-3 rounded-2xl bg-ticket p-3" style={CARD_SHADOW}>
+                  <Image source={hero.poster} className="h-14 w-14 rounded-xl" resizeMode="cover" />
+                  <VStack space="xs" className="flex-1">
+                    <Text className={`${EYEBROW} text-ink-soft`}>Continue watching</Text>
+                    <Text className="font-body-semibold text-sm text-ink" numberOfLines={1}>
+                      {hero.title}
+                    </Text>
+                    <View className="h-1 overflow-hidden rounded-full bg-ink/10">
+                      <View className="h-full rounded-full bg-marigold" style={{ width: "38%" }} />
+                    </View>
+                  </VStack>
+                  <VStack className="items-end">
+                    <Text className="text-xs text-ink-soft">0:24 / {clock(hero.durationSec)}</Text>
+                    <ChevronRight size={16} stroke="#5A4F66" />
+                  </VStack>
                 </View>
-              ) : (
-                <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
-                  {shown.map((f) => {
-                    const n = NARRATORS.find((x) => x.id === f.narratorId)
+              </Pressable>
+
+              <VStack space="sm">
+                <SectionHeader title="Browse by world" />
+                <View className="flex-row flex-wrap justify-between" style={{ rowGap: 12 }}>
+                  {TILES.map((t) => {
+                    const selected = filter === t.key
                     return (
                       <Pressable
-                        key={f.id}
-                        onPress={() => router.push("/watch")}
-                        style={{ width: dense ? "31.5%" : "48%" }}
+                        key={t.key}
+                        onPress={() => setFilter(selected ? "all" : t.key)}
+                        style={{ width: "48.5%" }}
                         accessibilityRole="button"
-                        accessibilityLabel={`${f.title}, ${clock(f.durationSec)}`}
+                        accessibilityState={{ selected }}
                       >
-                        <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
-                          <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                          <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
-                            <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                        <View className={`relative h-24 overflow-hidden rounded-2xl ${selected ? "border-2 border-marigold" : ""}`} style={CARD_SHADOW}>
+                          <Image source={FILMS[t.posterIndex % FILMS.length].poster} className="absolute h-full w-full" resizeMode="cover" />
+                          <View className="absolute inset-0 bg-night/55" />
+                          <View className="absolute bottom-2 left-3 right-3">
+                            <Text className="font-display text-lg leading-6 text-ticket">{t.label}</Text>
+                            <Text className="text-[11px] text-ticket/80">
+                              {t.blurb} · {countOf(t.key)}
+                            </Text>
                           </View>
-                          {!f.watched ? (
-                            <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
-                              <Text className={`${EYEBROW} text-ticket`}>New</Text>
-                            </View>
-                          ) : null}
                         </View>
-                        <Text className={`mt-2 font-body-semibold text-ink ${dense ? "text-xs leading-4" : "text-[13px] leading-5"}`} numberOfLines={2}>
-                          {f.title}
-                        </Text>
-                        {!dense ? (
-                          <Text className="text-xs text-ink-soft" numberOfLines={1}>
-                            {n?.name} · {f.created}
-                          </Text>
-                        ) : null}
                       </Pressable>
                     )
                   })}
                 </View>
-              )}
-            </VStack>
+              </VStack>
 
-            <Pressable onPress={() => router.push("/create")} accessibilityRole="button">
-              <LinearGradient
-                colors={["#FFD36E", "#F2A112"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ borderRadius: 24, padding: 20, flexDirection: "row", alignItems: "center", gap: 14, shadowColor: "#B47B00", shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }}
-              >
-                <View className="h-11 w-11 items-center justify-center rounded-full bg-ink/10">
-                  <Sparkles size={20} stroke="#1B1330" />
-                </View>
-                <VStack space="xs" className="flex-1">
-                  <Text className="font-display text-xl leading-6 text-ink">Make tonight's film</Text>
-                  <Text className="text-[13px] leading-5 text-ink/80">Pick a topic, a narrator and a look.</Text>
-                </VStack>
-                <Play size={16} stroke="#1B1330" />
-              </LinearGradient>
-            </Pressable>
-          </VStack>
-        </Animated.View>
+              <VStack space="sm">
+                <SectionHeader title="New this week" count={fresh.length} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 4 }}>
+                  {fresh.map((f, i) => (
+                    <Pressable key={`fresh-${f.id}`} onPress={() => router.push("/watch")} className="w-40" accessibilityRole="button">
+                      <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
+                        <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
+                        <Text className="absolute left-2 top-0 font-display text-[40px] leading-[46px] text-ticket/90" style={{ textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 8 }}>
+                          {i + 1}
+                        </Text>
+                        <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                          <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                        </View>
+                      </View>
+                      <Text className="mt-2 font-body-semibold text-[13px] leading-5 text-ink" numberOfLines={2}>
+                        {f.title}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </VStack>
+
+              <VStack space="sm">
+                <SectionHeader title="Family library" count={shown.length}>
+                  <Pressable
+                    onPress={() => setDense((d) => !d)}
+                    className="h-11 min-w-11 flex-row items-center justify-center gap-1.5 rounded-full border border-ink/15 bg-ticket px-3 active:bg-paper"
+                    accessibilityRole="button"
+                    accessibilityLabel={dense ? "Show bigger posters" : "Show more films per row"}
+                  >
+                    <LayoutGrid size={14} stroke="#22319B" />
+                    <Text className="text-xs font-body-bold text-ink">{dense ? "2-up" : "3-up"}</Text>
+                  </Pressable>
+                </SectionHeader>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {FILTERS.map((f) => {
+                    const active = filter === f.key
+                    return (
+                      <Pressable
+                        key={f.key}
+                        onPress={() => setFilter(f.key)}
+                        className={`min-h-11 justify-center rounded-full px-4 ${active ? "bg-royal" : "border border-ink/15 bg-ticket"}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text className={`text-sm ${active ? "font-body-bold text-ticket" : "text-ink"}`}>{f.label}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+
+                {shown.length === 0 ? (
+                  <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
+                    <Text className="font-display text-xl text-ink">Nothing here yet</Text>
+                    <Text className="mt-1 text-center text-[13px] leading-5 text-ink-soft">Make a film in this world and it will appear here.</Text>
+                  </View>
+                ) : (
+                  <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
+                    {shown.map((f) => {
+                      const n = NARRATORS.find((x) => x.id === f.narratorId)
+                      return (
+                        <Pressable
+                          key={f.id}
+                          onPress={() => router.push("/watch")}
+                          style={{ width: dense ? "31.5%" : "48%" }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${f.title}, ${clock(f.durationSec)}`}
+                        >
+                          <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
+                            <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
+                            <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                              <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                            </View>
+                            {!f.watched ? (
+                              <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
+                                <Text className={`${EYEBROW} text-ticket`}>New</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text className={`mt-2 font-body-semibold text-ink ${dense ? "text-xs leading-4" : "text-[13px] leading-5"}`} numberOfLines={2}>
+                            {f.title}
+                          </Text>
+                          {!dense ? (
+                            <Text className="text-xs text-ink-soft" numberOfLines={1}>
+                              {n?.name} · {f.created}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                )}
+              </VStack>
+
+              <Pressable onPress={() => router.push("/create")} accessibilityRole="button">
+                <LinearGradient
+                  colors={["#FFD36E", "#F2A112"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ borderRadius: 24, padding: 20, flexDirection: "row", alignItems: "center", gap: 14, shadowColor: "#B47B00", shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }}
+                >
+                  <View className="h-11 w-11 items-center justify-center rounded-full bg-ink/10">
+                    <Sparkles size={20} stroke="#1B1330" />
+                  </View>
+                  <VStack space="xs" className="flex-1">
+                    <Text className="font-display text-xl leading-6 text-ink">Make tonight's film</Text>
+                    <Text className="text-[13px] leading-5 text-ink/80">Pick a topic, a narrator and a look.</Text>
+                  </VStack>
+                  <Play size={16} stroke="#1B1330" />
+                </LinearGradient>
+              </Pressable>
+            </VStack>
+          </Animated.View>
+        </View>
       </ScrollView>
     </View>
   )

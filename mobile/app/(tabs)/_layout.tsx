@@ -19,15 +19,15 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: "Home", tabBarIcon: ({ color }) => <Home size={22} color={color} /> }}
+        options={{ title: "Home", tabBarIcon: ({ color, focused }) => <Home size={22} color={color} strokeWidth={focused ? 2.4 : 1.9} /> }}
       />
       <Tabs.Screen
         name="create"
-        options={{ title: "Create", tabBarIcon: ({ color }) => <Clapperboard size={22} color={color} /> }}
+        options={{ title: "Create", tabBarIcon: ({ color, focused }) => <Clapperboard size={22} color={color} strokeWidth={focused ? 2.4 : 1.9} /> }}
       />
       <Tabs.Screen
         name="account"
-        options={{ title: "Account", tabBarIcon: ({ color }) => <UserRound size={22} color={color} /> }}
+        options={{ title: "Account", tabBarIcon: ({ color, focused }) => <UserRound size={22} color={color} strokeWidth={focused ? 2.4 : 1.9} /> }}
       />
     </Tabs>
   )
