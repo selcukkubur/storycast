@@ -13,5 +13,5 @@ const SIZES: Record<NonNullable<TextPropsUi["size"]>, string> = {
 }
 
 export function Text({ className, size = "md", ...rest }: TextPropsUi) {
-  return <RNText className={[SIZES[size], "text-gray-900", className].filter(Boolean).join(" ")} {...rest} />
+  return <RNText className={["font-body", SIZES[size], "text-ink", className].filter(Boolean).join(" ")} {...rest} />
 }

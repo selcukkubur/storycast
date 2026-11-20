@@ -1,3 +1,5 @@
+import type { ImageSourcePropType } from "react-native"
+
 export type Plan = "trial" | "starter" | "family"
 export type Resolution = "480P" | "768P"
 
@@ -6,7 +8,7 @@ export type Narrator = {
   name: string
   personality: string
   look: string
-  thumb: string
+  photo: ImageSourcePropType
   voice: string
 }
 
@@ -17,6 +19,7 @@ export type Film = {
   durationSec: number
   created: string
   watched: boolean
+  poster: ImageSourcePropType
 }
 
 export type JobStage =

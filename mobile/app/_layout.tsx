@@ -1,6 +1,18 @@
 import "../global.css"
+import { useFonts } from "expo-font"
 import { Stack } from "expo-router"
+import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces"
+import { Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from "@expo-google-fonts/nunito"
 
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />
+  const [loaded] = useFonts({
+    Fraunces_600SemiBold,
+    Nunito_400Regular,
+    Nunito_600SemiBold,
+    Nunito_700Bold,
+  })
+
+  if (!loaded) return null
+
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#F4EFE3" } }} />
 }
