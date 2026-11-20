@@ -175,35 +175,67 @@ export function createApp(deps: Deps = {}) {
         if (req.method === "POST" && path === "/apple/subscription") {
           const account = await authenticate(env, req);
           const b = await body(req);
+          const transactionId = str(b.transactionId, 100);
+          if (!transactionId) throw new HttpError(400, "transactionId is required");
           const verifier = deps.verifier ?? serverApiVerifier(env);
-          const sub = await verifier.subscription(str(b.transactionId, 100));
+          const sub = await verifier.subscription(transactionId);
+          if (!PRODUCTS[sub.productId]?.plan) throw new HttpError(400, "not a subscription product");
           const active = !sub.revoked && sub.expiresAt > now();
-          const plan: Plan = active ? sub.plan : "trial";
-          await env.DB.prepare(
-            "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ? WHERE id = ?",
-          )
-            .bind(
-              active ? sub.plan : account.plan,
-              sub.expiresAt,
-              sub.appAccountToken,
-              sub.originalTransactionId,
-              account.id,
+
+          // A receipt may only be claimed by the account it was issued for.
+          // Task 9 (Family Sharing) replaces the apple_token branch with a family link:
+          // a matching token owned by another account becomes `family_of` instead of a 409.
+          if (sub.appAccountToken) {
+            const holder = await env.DB.prepare("SELECT id FROM accounts WHERE apple_token = ?")
+              .bind(sub.appAccountToken)
+              .first<{ id: string }>();
+            if (holder && holder.id !== account.id) throw new HttpError(409, "receipt is linked to another account");
+          }
+          if (sub.originalTransactionId) {
+            const owner = await env.DB.prepare("SELECT id FROM accounts WHERE orig_txn = ? AND id != ?")
+              .bind(sub.originalTransactionId, account.id)
+              .first<{ id: string }>();
+            if (owner) throw new HttpError(409, "receipt is linked to another account");
+          }
+
+          try {
+            await env.DB.prepare(
+              "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ? WHERE id = ?",
             )
-            .run();
+              .bind(
+                active ? sub.plan : "trial",
+                active ? sub.expiresAt : 0,
+                sub.appAccountToken,
+                sub.originalTransactionId,
+                account.id,
+              )
+              .run();
+          } catch (e) {
+            // A concurrent sync can still lose the unique race on accounts.apple_token.
+            if (String((e as { message?: unknown })?.message ?? e).includes("UNIQUE"))
+              throw new HttpError(409, "receipt is linked to another account");
+            throw e;
+          }
           if (active) await grantMonth(env, pool(account), sub.plan);
-          return json({ plan, credits: await balance(env, pool(account)), expiresAt: sub.expiresAt });
+          return json({
+            plan: active ? sub.plan : "trial",
+            credits: await balance(env, pool(account)),
+            expiresAt: active ? sub.expiresAt : 0,
+          });
         }
 
         if (req.method === "POST" && path === "/apple/topup") {
           const account = await authenticate(env, req);
           const b = await body(req);
+          const transactionId = str(b.transactionId, 100);
+          if (!transactionId) throw new HttpError(400, "transactionId is required");
           const verifier = deps.verifier ?? serverApiVerifier(env);
-          const sub = await verifier.subscription(str(b.transactionId, 100));
+          const sub = await verifier.subscription(transactionId);
           const credits = PRODUCTS[sub.productId]?.topup;
           if (!credits) throw new HttpError(400, "not a top-up product");
           if (sub.revoked) throw new HttpError(402, "purchase was revoked");
-          await record(env, pool(account), "topup", credits, `topup:${sub.originalTransactionId}`);
-          return json({ creditsAdded: credits, creditsLeft: await balance(env, pool(account)) });
+          const added = await record(env, pool(account), "topup", credits, `topup:${sub.originalTransactionId}`);
+          return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, pool(account)) });
         }
 
         throw new HttpError(404, "not found");

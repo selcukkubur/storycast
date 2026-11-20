@@ -46,6 +46,16 @@ const post = (app: ReturnType<typeof fakeApp>, path: string, token: string, payl
     db,
   );
 
+const wallet = async (app: ReturnType<typeof fakeApp>, token: string) => {
+  const r = await app.fetch(new Request("https://billing.local/wallet", { headers: { authorization: `Bearer ${token}` } }), db);
+  return (await r.json()) as { plan: string; credits: number };
+};
+
+const grantRows = async (poolId: string) => {
+  const r = await db.DB.prepare("SELECT COUNT(*) AS n FROM ledger WHERE pool = ? AND kind = 'grant'").bind(poolId).first<{ n: number }>();
+  return r?.n ?? 0;
+};
+
 beforeEach(async () => {
   await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
@@ -76,6 +86,33 @@ describe("apple subscription sync", () => {
     const b = (await (await post(app, "/apple/subscription", token, { transactionId: "tx1" })).json()) as { plan: string };
     expect(b.plan).toBe("trial");
   });
+
+  it("revokes a mid-term subscription back to trial without another grant", async () => {
+    const subs: Record<string, Subscription> = { tx1: sub() };
+    const app = fakeApp(subs);
+    const { token, account } = await register(app);
+    await post(app, "/apple/subscription", token, { transactionId: "tx1" });
+    expect((await wallet(app, token)).plan).toBe("starter");
+    const before = await grantRows(account);
+
+    subs.tx1 = sub({ revoked: true });
+    const res = await post(app, "/apple/subscription", token, { transactionId: "tx1" });
+    expect(((await res.json()) as { plan: string }).plan).toBe("trial");
+
+    const after = await wallet(app, token);
+    expect(after.plan).toBe("trial");
+    expect(await grantRows(account)).toBe(before);
+  });
+
+  it("rejects a missing or empty transaction id", async () => {
+    const app = fakeApp({});
+    const { token } = await register(app);
+    for (const path of ["/apple/subscription", "/apple/topup"]) {
+      expect((await post(app, path, token, {})).status).toBe(400);
+      expect((await post(app, path, token, { transactionId: "" })).status).toBe(400);
+      expect((await post(app, path, token, { transactionId: 42 })).status).toBe(400);
+    }
+  });
 });
 
 describe("top-ups", () => {
@@ -93,5 +130,31 @@ describe("top-ups", () => {
     const { token } = await register(app);
     const res = await post(app, "/apple/topup", token, { transactionId: "tx3" });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects a revoked top-up purchase", async () => {
+    const app = fakeApp({ tx4: sub({ productId: "com.storycast.topup.3", revoked: true }) });
+    const { token } = await register(app);
+    const res = await post(app, "/apple/topup", token, { transactionId: "tx4" });
+    expect(res.status).toBe(402);
+    expect((await wallet(app, token)).credits).toBe(1);
+  });
+
+  it("grants nothing when the same top-up is replayed", async () => {
+    const app = fakeApp({ tx5: sub({ productId: "com.storycast.topup.1", originalTransactionId: "orig-topup" }) });
+    const { token } = await register(app);
+    const first = (await (await post(app, "/apple/topup", token, { transactionId: "tx5" })).json()) as {
+      creditsAdded: number;
+      creditsLeft: number;
+    };
+    expect(first.creditsAdded).toBe(1);
+    expect(first.creditsLeft).toBe(2);
+
+    const second = (await (await post(app, "/apple/topup", token, { transactionId: "tx5" })).json()) as {
+      creditsAdded: number;
+      creditsLeft: number;
+    };
+    expect(second.creditsAdded).toBe(0);
+    expect(second.creditsLeft).toBe(2);
   });
 });
