@@ -98,8 +98,8 @@ export default function WatchFlow() {
                             <Text className={`${EYEBROW} text-ticket`}>New</Text>
                           </View>
                         ) : null}
-                        <View className="absolute bottom-2 right-2 rounded-md bg-night/70 px-1.5 py-0.5">
-                          <Text className="text-[10px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                        <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                          <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                         </View>
                       </View>
                       <Text className="mt-2 font-body-semibold text-sm text-ink" numberOfLines={2}>

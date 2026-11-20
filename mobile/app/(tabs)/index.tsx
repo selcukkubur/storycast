@@ -8,7 +8,7 @@ import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { FILMS, NARRATORS, WALLET } from "@/src/flows/shared/mock-data"
 
-const EYEBROW = "font-body-semibold text-[10px] uppercase tracking-[2.5px]"
+const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
 const CARD_SHADOW = {
   shadowColor: "#1B1330",
@@ -94,7 +94,7 @@ export default function HomeScreen() {
                   <View style={{ height: 2, width: 16, backgroundColor: "#6F6480", opacity: 0.7 }} />
                   <Text className={`${EYEBROW} text-ink-soft`}>Family library</Text>
                 </HStack>
-                <Text className="text-[11px] text-ink-soft">{FILMS.length} films</Text>
+                <Text className="text-xs text-ink-soft">{FILMS.length} films</Text>
               </HStack>
               <View className="mt-3 flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
                 {FILMS.map((f) => {
@@ -103,14 +103,14 @@ export default function HomeScreen() {
                     <Pressable key={f.id} onPress={() => router.push("/watch")} className="w-[48%]" accessibilityRole="button">
                       <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
                         <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                        <View className="absolute bottom-2 right-2 rounded-md bg-night/70 px-1.5 py-0.5">
-                          <Text className="text-[10px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                        <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                          <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                         </View>
                       </View>
                       <Text className="mt-2 font-body-semibold text-sm text-ink" numberOfLines={2}>
                         {f.title}
                       </Text>
-                      <Text className="text-[11px] text-ink-soft">
+                      <Text className="text-xs text-ink-soft">
                         {n?.name} · {f.created}
                       </Text>
                     </Pressable>
@@ -131,7 +131,7 @@ export default function HomeScreen() {
                 </View>
                 <VStack space="xs" className="flex-1">
                   <Text className="font-display text-xl leading-6 text-ink">Make tonight's film</Text>
-                  <Text className="text-xs text-ink/70">Pick a topic, a narrator and a look.</Text>
+                  <Text className="text-[13px] leading-5 text-ink/80">Pick a topic, a narrator and a look.</Text>
                 </VStack>
                 <Play size={16} stroke="#1B1330" />
               </LinearGradient>
