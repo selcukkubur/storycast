@@ -38,10 +38,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS jobs_pool ON jobs (pool, status);
 
+/* `final` marks a call (and the video it yields) as deliverable: the finished film, or a trim of one. */
 CREATE TABLE IF NOT EXISTS job_calls (
   request_id TEXT PRIMARY KEY,
   job_id     TEXT NOT NULL,
   app        TEXT NOT NULL,
+  final      INTEGER NOT NULL DEFAULT 0,
   created    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_calls_job ON job_calls (job_id);
@@ -50,6 +52,7 @@ CREATE TABLE IF NOT EXISTS job_assets (
   job_id  TEXT NOT NULL,
   url     TEXT NOT NULL,
   app     TEXT NOT NULL,
+  final   INTEGER NOT NULL DEFAULT 0,
   created INTEGER NOT NULL,
   PRIMARY KEY (job_id, url)
 );

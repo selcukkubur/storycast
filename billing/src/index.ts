@@ -29,6 +29,8 @@ const period = () => new Date().toISOString().slice(0, 7);
 
 /** Apps whose output is a finished film: once one exists the job may not be refunded as an error. */
 const DELIVERABLE_APPS = new Set(["fal-ai/workflow-utilities/auto-subtitle", "fal-ai/ffmpeg-api/merge-audio-video"]);
+/** A trim of a finished film is still the film (subtitle fallback): its output stays deliverable. */
+const TRIM_APP = "fal-ai/workflow-utilities/trim-video";
 /** Flat ceiling for one job: a legitimate ~5-minute family film needs ~220 fal calls, so 400 leaves headroom. */
 const JOB_CALL_CAP = 400;
 /** A running job older than this can no longer block the pool (crashed client, lost device). */
@@ -147,9 +149,20 @@ export function createApp(deps: Deps = {}) {
             .bind(job.id)
             .first<{ n: number }>();
           if ((used?.n ?? 0) >= JOB_CALL_CAP) throw new HttpError(429, "too many calls for this job");
-          const r = await falSubmit(env, app, (b.input ?? {}) as Record<string, unknown>);
-          await env.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, created) VALUES (?, ?, ?, ?)")
-            .bind(r.request_id, job.id, app, now())
+          // Deliverable lineage is decided here, at submit time: the finished stage apps are final, and a trim
+          // is final only while trimming a video this job already delivered (the subtitle fallback path).
+          const input = (b.input ?? {}) as Record<string, unknown>;
+          let final = 0;
+          if (DELIVERABLE_APPS.has(app)) final = 1;
+          else if (app === TRIM_APP && typeof input.video_url === "string") {
+            const source = await env.DB.prepare("SELECT 1 AS ok FROM job_assets WHERE job_id = ? AND url = ? AND final = 1")
+              .bind(job.id, input.video_url)
+              .first<{ ok: number }>();
+            if (source) final = 1;
+          }
+          const r = await falSubmit(env, app, input);
+          await env.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, final, created) VALUES (?, ?, ?, ?, ?)")
+            .bind(r.request_id, job.id, app, final, now())
             .run();
           return json(r);
         }
@@ -161,16 +174,17 @@ export function createApp(deps: Deps = {}) {
             .bind(call[1])
             .first<{ id: string; account: string }>();
           if (!job || job.account !== account.id) throw new HttpError(404, "job not found");
-          const row = await env.DB.prepare("SELECT app FROM job_calls WHERE request_id = ? AND job_id = ?")
+          const row = await env.DB.prepare("SELECT app, final FROM job_calls WHERE request_id = ? AND job_id = ?")
             .bind(call[2], job.id)
-            .first<{ app: string }>();
+            .first<{ app: string; final: number }>();
           if (!row) throw new HttpError(404, "request not found");
           if (call[3] === "status") return json(await falStatus(env, row.app, call[2]));
           const result = await falResult(env, row.app, call[2]);
           // Remember every video this job actually produced: settlement may not trust the client's word.
+          // The call's own `final` flag travels with each URL so a film trimmed later stays deliverable.
           for (const url of producedVideos(result)) {
-            await env.DB.prepare("INSERT OR IGNORE INTO job_assets (job_id, url, app, created) VALUES (?, ?, ?, ?)")
-              .bind(job.id, url, row.app, now())
+            await env.DB.prepare("INSERT OR IGNORE INTO job_assets (job_id, url, app, final, created) VALUES (?, ?, ?, ?, ?)")
+              .bind(job.id, url, row.app, row.final, now())
               .run();
           }
           return json(result);
@@ -205,22 +219,20 @@ export function createApp(deps: Deps = {}) {
 
           if (outcome === "error") {
             // Full refund on error stays per spec, but a job that already produced a film cannot be refunded as failed.
-            const deliverable = await env.DB.prepare("SELECT app FROM job_assets WHERE job_id = ?")
+            const film = await env.DB.prepare("SELECT 1 AS ok FROM job_assets WHERE job_id = ? AND final = 1 LIMIT 1")
               .bind(job.id)
-              .all<{ app: string }>();
-            const film = (deliverable.results ?? []).find((a) => DELIVERABLE_APPS.has(a.app));
+              .first<{ ok: number }>();
             if (film) throw new HttpError(409, "this job already produced a film; settle it as done");
             refund = job.credits;
           } else if (outcome === "done") {
             videoUrl = falUrl(b.videoUrl);
             if (!videoUrl) throw new HttpError(400, "videoUrl must be a fal media URL");
-            // Only an app whose output is the finished film may settle a job as done: a recorded trim,
-            // clip or still is proof of work, not proof of delivery, and must not unlock a refund.
-            const produced = await env.DB.prepare("SELECT app FROM job_assets WHERE job_id = ? AND url = ?")
+            // Only a final asset may settle a job as done: a recorded trim of intermediate material, a clip or a
+            // still is proof of work, not proof of delivery, and must not unlock a refund.
+            const produced = await env.DB.prepare("SELECT 1 AS ok FROM job_assets WHERE job_id = ? AND url = ? AND final = 1")
               .bind(job.id, videoUrl)
-              .first<{ app: string }>();
-            if (!produced || !DELIVERABLE_APPS.has(produced.app))
-              throw new HttpError(400, "videoUrl was not produced by this job");
+              .first<{ ok: number }>();
+            if (!produced) throw new HttpError(400, "videoUrl was not produced by this job");
             const { duration } = await falMetadata(env, videoUrl);
             refund = settleRefund(job.minutes, job.resolution, duration);
           } else {

@@ -42,9 +42,14 @@ const settle = (token: string, jobId: string, payload: Record<string, unknown>) 
     body: JSON.stringify(payload),
   });
 
-/** Seed the asset ledger the way the proxied result route would: the default app emits the finished film. */
-const seedAsset = (jobId: string, url: string, app = "fal-ai/ffmpeg-api/merge-audio-video") =>
-  db.DB.prepare("INSERT INTO job_assets (job_id, url, app, created) VALUES (?, ?, ?, 0)").bind(jobId, url, app).run();
+/**
+ * Seed the asset ledger the way the proxied result route would: the default app emits the finished film, so the
+ * asset is final. Intermediate artifacts (trims of intermediate material, stills) are seeded with `final = 0`.
+ */
+const seedAsset = (jobId: string, url: string, app = "fal-ai/ffmpeg-api/merge-audio-video", final = 1) =>
+  db.DB.prepare("INSERT INTO job_assets (job_id, url, app, final, created) VALUES (?, ?, ?, ?, 0)")
+    .bind(jobId, url, app, final)
+    .run();
 
 describe("settle", () => {
   it("keeps the full charge when the film is close to plan", async () => {
@@ -88,8 +93,8 @@ describe("settle", () => {
 
   it("refuses to settle as done on a recorded clip that is not the film", async () => {
     const { token, jobId } = await twoMinuteStarter();
-    // A trim clip is recorded proof of work, but a cheap clip must not unlock a refund on a done job.
-    await seedAsset(jobId, "https://fal.media/files/x/clip.mp4", "fal-ai/workflow-utilities/trim-video");
+    // A trim clip is recorded proof of work, but a non-final clip must not unlock a refund on a done job.
+    await seedAsset(jobId, "https://fal.media/files/x/clip.mp4", "fal-ai/workflow-utilities/trim-video", 0);
     const fal = vi.fn(async () => new Response(JSON.stringify({ media: { duration: 30 } }), { status: 200 }));
     vi.stubGlobal("fetch", fal);
 
@@ -110,7 +115,7 @@ describe("settle", () => {
 
   it("records the video a result route returns and settles it as done", async () => {
     const { token, jobId } = await twoMinuteStarter();
-    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, created) VALUES ('req-film', ?, 'fal-ai/ffmpeg-api/merge-audio-video', 0)")
+    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, final, created) VALUES ('req-film', ?, 'fal-ai/ffmpeg-api/merge-audio-video', 1, 0)")
       .bind(jobId)
       .run();
     const result = { video: { url: "https://fal.media/files/x/from-route.mp4" } };
@@ -125,10 +130,10 @@ describe("settle", () => {
     expect(proxied.status).toBe(200);
     expect(await proxied.json()).toEqual(result);
 
-    const asset = await db.DB.prepare("SELECT app FROM job_assets WHERE job_id = ? AND url = ?")
+    const asset = await db.DB.prepare("SELECT app, final FROM job_assets WHERE job_id = ? AND url = ?")
       .bind(jobId, "https://fal.media/files/x/from-route.mp4")
-      .first<{ app: string }>();
-    expect(asset?.app).toBe("fal-ai/ffmpeg-api/merge-audio-video");
+      .first<{ app: string; final: number }>();
+    expect(asset).toMatchObject({ app: "fal-ai/ffmpeg-api/merge-audio-video", final: 1 });
 
     // The same stub now answers the metadata lookup with a short film.
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ media: { duration: 30 } }), { status: 200 })));
@@ -168,9 +173,80 @@ describe("settle", () => {
 
   it("still refunds an error when the job produced only intermediate clips", async () => {
     const { token, jobId } = await twoMinuteStarter();
-    await seedAsset(jobId, "https://fal.media/files/x/clip.mp4", "fal-ai/workflow-utilities/trim-video");
+    await seedAsset(jobId, "https://fal.media/files/x/clip.mp4", "fal-ai/workflow-utilities/trim-video", 0);
     const b = (await (await settle(token, jobId, { outcome: "error" })).json()) as { refund: number };
     expect(b.refund).toBe(2);
+  });
+
+  it("refuses an error refund once the merge has produced the film", async () => {
+    const { token, jobId } = await twoMinuteStarter();
+    // The final-stage merge is recorded as final, so the job is delivered, not failed.
+    await seedAsset(jobId, "https://fal.media/files/x/merged.mp4");
+
+    const res = await settle(token, jobId, { outcome: "error" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("this job already produced a film; settle it as done");
+
+    const job = await db.DB.prepare("SELECT settled, status FROM jobs WHERE id = ?")
+      .bind(jobId)
+      .first<{ settled: number; status: string }>();
+    expect(job).toMatchObject({ settled: 0, status: "running" });
+  });
+
+  it("settles a trimmed film as done when the trim descends from a final asset", async () => {
+    const { token, jobId } = await twoMinuteStarter();
+    const mergeUrl = "https://fal.media/files/x/merge.mp4";
+    const trimUrl = "https://fal.media/files/x/merge-trimmed.mp4";
+    // The merge produced the finished cut; the auto-subtitle fallback trims that merge to the planned length
+    // and delivers the trim, so the job must still be settleable as done.
+    await seedAsset(jobId, mergeUrl);
+
+    const fal = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes("/requests/")) return new Response(JSON.stringify({ video: { url: trimUrl } }), { status: 200 });
+      if (u.startsWith("https://queue.fal.run/")) return new Response(JSON.stringify({ request_id: "req-trim" }), { status: 200 });
+      return new Response(JSON.stringify({ media: { duration: 30 } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fal);
+
+    const submitted = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ app: "fal-ai/workflow-utilities/trim-video", input: { video_url: mergeUrl, start_time: 0, duration: 8 } }),
+    });
+    expect(submitted.status).toBe(200);
+    const call = await db.DB.prepare("SELECT final FROM job_calls WHERE request_id = 'req-trim'").first<{ final: number }>();
+    expect(call?.final).toBe(1);
+
+    const proxied = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls/req-trim/result`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(proxied.status).toBe(200);
+    const asset = await db.DB.prepare("SELECT final FROM job_assets WHERE job_id = ? AND url = ?")
+      .bind(jobId, trimUrl)
+      .first<{ final: number }>();
+    expect(asset?.final).toBe(1);
+
+    const res = await settle(token, jobId, { outcome: "done", videoUrl: trimUrl });
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { refund: number };
+    expect(b.refund).toBe(1);
+  });
+
+  it("does not mark a trim of a non-final clip as final", async () => {
+    const { token, jobId } = await twoMinuteStarter();
+    await seedAsset(jobId, "https://fal.media/files/x/shot.mp4", "fal-ai/workflow-utilities/trim-video", 0);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ request_id: "req-shot-trim" }), { status: 200 })));
+
+    const res = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ app: "fal-ai/workflow-utilities/trim-video", input: { video_url: "https://fal.media/files/x/shot.mp4" } }),
+    });
+    expect(res.status).toBe(200);
+
+    const call = await db.DB.prepare("SELECT final FROM job_calls WHERE request_id = 'req-shot-trim'").first<{ final: number }>();
+    expect(call?.final).toBe(0);
   });
 
   it("rejects a non-fal video URL", async () => {

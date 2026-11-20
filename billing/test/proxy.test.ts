@@ -95,7 +95,7 @@ describe("fal proxy", () => {
 
   it("records the videos a result body reports as job assets", async () => {
     const { token, jobId } = await setup();
-    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, created) VALUES ('req-3', ?, 'fal-ai/ffmpeg-api/merge-audio-video', 0)")
+    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, final, created) VALUES ('req-3', ?, 'fal-ai/ffmpeg-api/merge-audio-video', 1, 0)")
       .bind(jobId)
       .run();
     const body = {
@@ -113,13 +113,38 @@ describe("fal proxy", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(body);
 
-    const rows = await db.DB.prepare("SELECT url, app FROM job_assets WHERE job_id = ? ORDER BY url").bind(jobId).all<{ url: string; app: string }>();
+    const rows = await db.DB.prepare("SELECT url, app, final FROM job_assets WHERE job_id = ? ORDER BY url")
+      .bind(jobId)
+      .all<{ url: string; app: string; final: number }>();
     expect((rows.results ?? []).map((r) => r.url)).toEqual([
       "https://fal.media/files/a/clip.mp4",
       "https://fal.media/files/a/film-copy.mp4",
       "https://fal.media/files/a/film.mp4",
     ]);
     expect(new Set((rows.results ?? []).map((r) => r.app))).toEqual(new Set(["fal-ai/ffmpeg-api/merge-audio-video"]));
+    // Every URL the final call reports inherits the call's final flag.
+    expect((rows.results ?? []).every((r) => r.final === 1)).toBe(true);
+  });
+
+  it("records an intermediate call's videos without the final flag", async () => {
+    const { token, jobId } = await setup();
+    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, final, created) VALUES ('req-4', ?, 'fal-ai/ffmpeg-api/compose', 0, 0)")
+      .bind(jobId)
+      .run();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ video: { url: "https://fal.media/files/a/picture.mp4" } }), { status: 200 })),
+    );
+
+    const res = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls/req-4/result`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+
+    const asset = await db.DB.prepare("SELECT app, final FROM job_assets WHERE job_id = ? AND url = ?")
+      .bind(jobId, "https://fal.media/files/a/picture.mp4")
+      .first<{ app: string; final: number }>();
+    expect(asset).toMatchObject({ app: "fal-ai/ffmpeg-api/compose", final: 0 });
   });
 
   it("caps the calls a single job may make", async () => {
