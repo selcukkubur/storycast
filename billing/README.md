@@ -31,11 +31,25 @@ Products: `com.storycast.starter.monthly|yearly`, `com.storycast.family.monthly|
 
 ## Develop
 
+Local D1 starts empty, so apply the schema before the first run. `wrangler dev` also reads secrets from
+`.dev.vars` (gitignored); a missing `HASH_SALT` silently hashes with the literal `"undefined"`, so mixing
+runs creates duplicate accounts. Create the file with a local-only salt:
+
 ```bash
-npm run dev          # wrangler dev on http://127.0.0.1:8787
-npm test             # vitest-pool-workers
-node scripts/smoke.mjs
+npm install
+npm run db:init:local    # npx wrangler d1 execute storycast-billing --local --file schema.sql
+echo 'HASH_SALT=dev-salt-change-me' > .dev.vars
+npm run dev              # wrangler dev on http://127.0.0.1:8787
+npm test                 # vitest-pool-workers
 ```
+
+`npm run dev` blocks, so run the smoke script in a second terminal once the worker is up:
+
+```bash
+node scripts/smoke.mjs   # prints 7 ok lines, then "smoke passed"
+```
+
+Never commit `.dev.vars`; use a real random salt for deployed workers (`wrangler secret put HASH_SALT`).
 
 ## Deploy
 

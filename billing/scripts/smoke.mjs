@@ -28,7 +28,7 @@ ok(w1.body.plan === "trial" && w1.body.credits === 1, "trial wallet has 1 credit
 const job = await j(
   await fetch(`${BASE}/jobs`, { method: "POST", headers: auth, body: JSON.stringify({ minutes: 1, resolution: "480P" }) }),
 );
-ok(job.status === 200 && job.body.cost === 1, "trial film starts and debits 1 credit");
+ok(job.status === 200 && job.body.cost === 1 && job.body.creditsLeft === 0, "trial film starts and debits 1 credit");
 
 const second = await j(
   await fetch(`${BASE}/jobs`, { method: "POST", headers: auth, body: JSON.stringify({ minutes: 1, resolution: "480P" }) }),
