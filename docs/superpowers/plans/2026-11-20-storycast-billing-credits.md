@@ -302,7 +302,7 @@ describe("settleRefund", () => {
     expect(settleRefund(3, "480P", 165)).toBe(0);
   });
   it("refunds whole credits for a much shorter film", () => {
-    expect(settleRefund(1, "480P", 30)).toBe(1);
+    expect(settleRefund(1, "480P", 30)).toBe(0);
     expect(settleRefund(1, "768P", 30)).toBe(1);
     expect(settleRefund(3, "480P", 90)).toBe(1);
   });
@@ -1509,7 +1509,7 @@ export function serverApiVerifier(env: AppleEnv): AppleVerifier {
         env.APPLE_ENVIRONMENT === "production"
           ? "https://api.storekit.itunes.apple.com"
           : "https://api.storekit-sandbox.itunes.apple.com";
-      const r = await fetch(`${host}/inApps/v2/transactions/${encodeURIComponent(transactionId)}`, {
+      const r = await fetch(`${host}/inApps/v1/transactions/${encodeURIComponent(transactionId)}`, {
         headers: { authorization: `Bearer ${await serverJwt(env)}` },
       });
       if (!r.ok) throw new Error(`apple lookup answered ${r.status}`);
