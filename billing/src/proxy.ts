@@ -18,6 +18,7 @@ export const ALLOWED_APPS = new Set([
   "fal-ai/workflow-utilities/auto-subtitle",
   "fal-ai/ffmpeg-api/extract-frame",
   "fal-ai/ffmpeg-api/metadata",
+  "openrouter/router",
   "openrouter/router/vision",
 ]);
 

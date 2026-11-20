@@ -13,6 +13,12 @@ Design: `docs/superpowers/specs/2026-11-20-storycast-ios-pricing-design.md`
 
 1 credit = 1 film-minute at 480P; 768P costs 2 credits/min. Unused plan credits roll one month, up to 2x the allowance.
 
+## Client integration
+
+- `POST /jobs` answers with `watermark` (`true` while the account is on the trial plan). The client is responsible for rendering that watermark on the finished film; the server never burns it in.
+- The iOS client generates an `appAccountToken` (a UUID) before purchase and keeps it stable for the account. Besides receipt binding it is the Family Sharing link key: a member presenting the subscriber's receipt is linked into the family pool instead of getting a 409.
+- Nightly wallet ↔ App Store reconciliation (spec section 8) is a planned follow-up, tracked as plan A2. Nothing currently re-checks purchases or revokes credits on its own; the client syncs on launch.
+
 ## Setup
 
 ```bash

@@ -45,3 +45,12 @@ CREATE TABLE IF NOT EXISTS job_calls (
   created    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_calls_job ON job_calls (job_id);
+
+CREATE TABLE IF NOT EXISTS job_assets (
+  job_id  TEXT NOT NULL,
+  url     TEXT NOT NULL,
+  app     TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (job_id, url)
+);
+CREATE INDEX IF NOT EXISTS job_assets_job ON job_assets (job_id);

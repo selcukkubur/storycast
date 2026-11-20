@@ -15,6 +15,7 @@ export type StartCheck = { ok: true; cost: number } | { ok: false; reason: "cap"
 
 export function canStart(plan: Plan, balance: number, minutes: number, res: Resolution): StartCheck {
   const cost = creditsFor(minutes, res);
+  if (plan === "trial" && res !== "480P") return { ok: false, reason: "cap", cost };
   if (minutes > PLANS[plan].maxMinutes) return { ok: false, reason: "cap", cost };
   if (balance < cost) return { ok: false, reason: "credits", cost };
   return { ok: true, cost };

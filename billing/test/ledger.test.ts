@@ -6,7 +6,7 @@ import { balance, record } from "../src/ledger";
 const db = env as unknown as { DB: D1Database };
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   // D1's exec() splits on newlines, so the multi-line schema must be collapsed onto one line first.
   await db.DB.exec(schema.replace(/\s+/g, " "));
 });

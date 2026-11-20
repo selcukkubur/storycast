@@ -19,20 +19,25 @@ export const pool = (account: Account) => account.family_of ?? account.id;
 export const planOf = (account: Account): Plan =>
   account.plan === "trial" || account.expires_at > now() ? account.plan : "trial";
 
-export async function effective(env: Db, account: Account): Promise<{ plan: Plan; walletPool: string }> {
-  if (!account.family_of) return { plan: planOf(account), walletPool: account.id };
+export const idfvHashOf = (env: Db, idfv: string) => sha256(`${env.HASH_SALT}|i|${str(idfv, 200)}`);
+
+export async function effective(
+  env: Db,
+  account: Account,
+): Promise<{ plan: Plan; walletPool: string; expiresAt: number }> {
+  if (!account.family_of) return { plan: planOf(account), walletPool: account.id, expiresAt: account.expires_at };
   const owner = await env.DB.prepare(
     "SELECT id, plan, expires_at, apple_token, orig_txn, family_of, created FROM accounts WHERE id = ?",
   )
     .bind(account.family_of)
     .first<Account>();
-  if (!owner) return { plan: planOf(account), walletPool: account.id };
-  return { plan: planOf(owner), walletPool: owner.id };
+  if (!owner) return { plan: planOf(account), walletPool: account.id, expiresAt: account.expires_at };
+  return { plan: planOf(owner), walletPool: owner.id, expiresAt: owner.expires_at };
 }
 
 export async function createAccount(env: Db, device: string, idfv: string) {
   const deviceHash = await sha256(`${env.HASH_SALT}|d|${str(device, 200)}`);
-  const idfvHash = await sha256(`${env.HASH_SALT}|i|${str(idfv, 200)}`);
+  const idfvHash = await idfvHashOf(env, idfv);
 
   const id = randomId(12);
   const token = randomId(40);

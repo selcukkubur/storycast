@@ -18,7 +18,11 @@ describe("previewOutcome", () => {
   });
   it("suggests a top-up when only credits are short", () => {
     expect(previewOutcome("family", 1, 2, "480P")).toMatchObject({ ok: false, reason: "credits", upgrade: null });
-    expect(previewOutcome("trial", 1, 1, "768P")).toMatchObject({ ok: false, reason: "credits" });
+    expect(previewOutcome("starter", 1, 1, "768P")).toMatchObject({ ok: false, reason: "credits" });
+  });
+  it("caps the trial at 480P", () => {
+    expect(previewOutcome("trial", 99, 1, "768P")).toMatchObject({ ok: false, reason: "cap", upgrade: "starter" });
+    expect(previewOutcome("trial", 1, 1, "480P")).toEqual({ ok: true, cost: 1 });
   });
   it("keeps the plan table in sync with the spec", () => {
     expect(PLANS.starter.credits).toBe(3);

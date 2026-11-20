@@ -60,12 +60,15 @@ async function serverJwt(env: AppleEnv): Promise<string> {
 }
 
 export function serverApiVerifier(env: AppleEnv): AppleVerifier {
+  // An unset or misspelled environment must fail closed rather than silently verifying against Sandbox.
+  if (env.APPLE_ENVIRONMENT !== "production" && env.APPLE_ENVIRONMENT !== "sandbox")
+    throw new Error(`APPLE_ENVIRONMENT must be "production" or "sandbox", got ${JSON.stringify(env.APPLE_ENVIRONMENT ?? null)}`);
+  const host =
+    env.APPLE_ENVIRONMENT === "production"
+      ? "https://api.storekit.itunes.apple.com"
+      : "https://api.storekit-sandbox.itunes.apple.com";
   return {
     async subscription(transactionId: string): Promise<Subscription> {
-      const host =
-        env.APPLE_ENVIRONMENT === "production"
-          ? "https://api.storekit.itunes.apple.com"
-          : "https://api.storekit-sandbox.itunes.apple.com";
       const r = await fetch(`${host}/inApps/v1/transactions/${encodeURIComponent(transactionId)}`, {
         headers: { authorization: `Bearer ${await serverJwt(env)}` },
       });

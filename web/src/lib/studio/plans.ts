@@ -16,6 +16,8 @@ export type PlanOutcome =
 
 export function previewOutcome(plan: Plan, credits: number, minutes: number, res: Resolution): PlanOutcome {
   const cost = creditsFor(minutes, res);
+  // The trial is 480P-only, so a sharper render is a plan cap rather than a credit shortfall.
+  if (plan === "trial" && res !== "480P") return { ok: false, reason: "cap", cost, upgrade: "starter" };
   if (minutes > PLANS[plan].maxMinutes)
     return { ok: false, reason: "cap", cost, upgrade: plan === "trial" ? "starter" : plan === "starter" ? "family" : null };
   if (credits < cost) return { ok: false, reason: "credits", cost, upgrade: plan === "trial" ? "starter" : null };

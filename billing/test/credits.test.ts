@@ -20,8 +20,9 @@ describe("canStart", () => {
     expect(canStart("starter", 99, 3, "480P")).toEqual({ ok: false, reason: "cap", cost: 3 });
     expect(canStart("trial", 99, 2, "480P").ok).toBe(false);
   });
-  it("rejects a 768P film the trial cannot pay for", () => {
-    expect(canStart("trial", 1, 1, "768P")).toEqual({ ok: false, reason: "credits", cost: 2 });
+  it("rejects 768P on the trial plan before looking at credits", () => {
+    expect(canStart("trial", 99, 1, "768P")).toEqual({ ok: false, reason: "cap", cost: 2 });
+    expect(canStart("trial", 1, 1, "768P")).toEqual({ ok: false, reason: "cap", cost: 2 });
   });
   it("uses the family cap of 5 minutes", () => {
     expect(canStart("family", 5, 5, "480P")).toEqual({ ok: true, cost: 5 });

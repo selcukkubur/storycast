@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import schema from "../schema.sql?raw";
 import { createApp, type Env } from "../src/index";
-import type { AppleVerifier, Subscription } from "../src/apple";
+import { PRODUCTS, serverApiVerifier, type AppleVerifier, type Subscription } from "../src/apple";
 
 const db = env as unknown as Env;
 
@@ -57,7 +57,7 @@ const grantRows = async (poolId: string) => {
 };
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
 });
 
@@ -104,6 +104,30 @@ describe("apple subscription sync", () => {
     expect(await grantRows(account)).toBe(before);
   });
 
+  it("ignores an expired receipt from an older term", async () => {
+    const term = future();
+    const subs: Record<string, Subscription> = { tx1: sub({ expiresAt: term }) };
+    const app = fakeApp(subs);
+    const { token, account } = await register(app);
+    await post(app, "/apple/subscription", token, { transactionId: "tx1" });
+    const before = (await wallet(app, token)) as { plan: string; credits: number };
+    expect(before.plan).toBe("starter");
+    const grants = await grantRows(account);
+
+    subs.tx1 = sub({ expiresAt: Math.floor(Date.now() / 1000) - 3600 });
+    const res = await post(app, "/apple/subscription", token, { transactionId: "tx1" });
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { plan: string; credits: number; expiresAt: number };
+    expect(b.plan).toBe("starter");
+    expect(b.expiresAt).toBe(term);
+    expect(b.credits).toBe(before.credits);
+
+    const after = await wallet(app, token);
+    expect(after.plan).toBe("starter");
+    expect(after.credits).toBe(before.credits);
+    expect(await grantRows(account)).toBe(grants);
+  });
+
   it("rejects a missing or empty transaction id", async () => {
     const app = fakeApp({});
     const { token } = await register(app);
@@ -112,6 +136,27 @@ describe("apple subscription sync", () => {
       expect((await post(app, path, token, { transactionId: "" })).status).toBe(400);
       expect((await post(app, path, token, { transactionId: 42 })).status).toBe(400);
     }
+  });
+});
+
+describe("server api verifier", () => {
+  it("refuses to guess the Apple environment", async () => {
+    const call = async () => serverApiVerifier({} as never).subscription("x");
+    await expect(call()).rejects.toThrow(/APPLE_ENVIRONMENT/);
+    expect(() => serverApiVerifier({ APPLE_ENVIRONMENT: "prod" })).toThrow(/APPLE_ENVIRONMENT/);
+    expect(() => serverApiVerifier({ APPLE_ENVIRONMENT: "production" })).not.toThrow();
+    expect(() => serverApiVerifier({ APPLE_ENVIRONMENT: "sandbox" })).not.toThrow();
+  });
+
+  it("only ships known products", () => {
+    expect(Object.keys(PRODUCTS).sort()).toEqual([
+      "com.storycast.family.monthly",
+      "com.storycast.family.yearly",
+      "com.storycast.starter.monthly",
+      "com.storycast.starter.yearly",
+      "com.storycast.topup.1",
+      "com.storycast.topup.3",
+    ]);
   });
 });
 

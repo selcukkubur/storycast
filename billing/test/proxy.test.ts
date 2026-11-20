@@ -5,7 +5,7 @@ import schema from "../schema.sql?raw";
 const db = env as unknown as { DB: D1Database };
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
 });
 
@@ -91,6 +91,54 @@ describe("fal proxy", () => {
     });
     expect(res.status).toBe(200);
     expect(String(fal.mock.calls[0][0])).toBe("https://queue.fal.run/fal-ai/ffmpeg-api/metadata/requests/req-9/status");
+  });
+
+  it("records the videos a result body reports as job assets", async () => {
+    const { token, jobId } = await setup();
+    await db.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, created) VALUES ('req-3', ?, 'fal-ai/ffmpeg-api/merge-audio-video', 0)")
+      .bind(jobId)
+      .run();
+    const body = {
+      video: { url: "https://fal.media/files/a/film.mp4" },
+      video_url: "https://fal.media/files/a/film-copy.mp4",
+      clips: [{ video: { url: "https://fal.media/files/a/clip.mp4" } }],
+      audio: { url: "https://fal.media/files/a/music.mp3" },
+      duration: 12,
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const res = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls/req-3/result`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(body);
+
+    const rows = await db.DB.prepare("SELECT url, app FROM job_assets WHERE job_id = ? ORDER BY url").bind(jobId).all<{ url: string; app: string }>();
+    expect((rows.results ?? []).map((r) => r.url)).toEqual([
+      "https://fal.media/files/a/clip.mp4",
+      "https://fal.media/files/a/film-copy.mp4",
+      "https://fal.media/files/a/film.mp4",
+    ]);
+    expect(new Set((rows.results ?? []).map((r) => r.app))).toEqual(new Set(["fal-ai/ffmpeg-api/merge-audio-video"]));
+  });
+
+  it("caps the calls a single job may make", async () => {
+    const { token, jobId } = await setup();
+    await db.DB.prepare(
+      "INSERT INTO job_calls (request_id, job_id, app, created) SELECT 'rid-' || value, ?, 'fal-ai/ffmpeg-api/metadata', 0 FROM (WITH RECURSIVE c(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM c WHERE value < 200) SELECT value FROM c)",
+    )
+      .bind(jobId)
+      .run();
+    const fal = vi.fn(async () => new Response(JSON.stringify({ request_id: "req-over" }), { status: 200 }));
+    vi.stubGlobal("fetch", fal);
+
+    const res = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ app: "fal-ai/ffmpeg-api/metadata", input: {} }),
+    });
+    expect(res.status).toBe(429);
+    expect(fal).not.toHaveBeenCalled();
   });
 
   it("uploads a file through the fal storage handshake", async () => {

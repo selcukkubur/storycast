@@ -1,4 +1,4 @@
-import { authenticate, createAccount, effective, pool } from "./accounts";
+import { authenticate, createAccount, effective, idfvHashOf, planOf, pool } from "./accounts";
 import { PRODUCTS, serverApiVerifier, type AppleVerifier } from "./apple";
 import { PLANS, canStart, settleRefund, type Plan, type Resolution } from "./credits";
 import { HttpError, falUrl, json, num, now, randomId, str } from "./http";
@@ -27,6 +27,35 @@ const body = async (req: Request) => {
 
 const period = () => new Date().toISOString().slice(0, 7);
 
+/** Apps whose output is a finished film: once one exists the job may not be refunded as an error. */
+const DELIVERABLE_APPS = new Set(["fal-ai/workflow-utilities/auto-subtitle", "fal-ai/ffmpeg-api/merge-audio-video"]);
+const JOB_CALL_CAP = 200;
+/** A running job older than this can no longer block the pool (crashed client, lost device). */
+const RUNNING_JOB_TTL = 6 * 3600;
+
+/**
+ * Video URLs a fal result body reports. Kept deliberately narrow: a result is trusted as "this job
+ * produced a film" only at the shapes our allowlisted apps actually return.
+ */
+function producedVideos(body: unknown): string[] {
+  const found: string[] = [];
+  const add = (v: unknown) => {
+    const url = falUrl(v);
+    if (url && !found.includes(url)) found.push(url);
+  };
+  if (!body || typeof body !== "object") return found;
+  const b = body as Record<string, unknown>;
+  add((b.video as { url?: unknown } | undefined)?.url);
+  add(b.video_url);
+  for (const value of Object.values(b)) {
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      if (item && typeof item === "object") add((item as { video?: { url?: unknown } }).video?.url);
+    }
+  }
+  return found;
+}
+
 async function grantMonth(env: Env, walletPool: string, plan: Plan) {
   const bal = await balance(env, walletPool);
   const grant = Math.min(PLANS[plan].credits, Math.max(0, PLANS[plan].rolloverCap - bal));
@@ -48,18 +77,22 @@ export function createApp(deps: Deps = {}) {
           const b = await body(req);
           const device = str(b.device, 200);
           if (!device) throw new HttpError(400, "device is required");
+          if (env.ACCOUNT_LIMIT) {
+            const { success } = await env.ACCOUNT_LIMIT.limit({ key: `reg:${await idfvHashOf(env, str(b.idfv, 200))}` });
+            if (!success) throw new HttpError(429, "slow down");
+          }
           return json(await createAccount(env, device, str(b.idfv, 200)));
         }
 
         if (req.method === "GET" && path === "/wallet") {
           const account = await authenticate(env, req);
-          const { plan, walletPool } = await effective(env, account);
+          const { plan, walletPool, expiresAt } = await effective(env, account);
           return json({
             plan,
             credits: await balance(env, walletPool),
             maxMinutes: PLANS[plan].maxMinutes,
             familyOf: account.family_of,
-            expiresAt: account.expires_at,
+            expiresAt,
           });
         }
 
@@ -75,12 +108,16 @@ export function createApp(deps: Deps = {}) {
           const credits = await balance(env, walletPool);
           const check = canStart(plan, credits, minutes, resolution as Resolution);
           if (!check.ok) throw new HttpError(check.reason === "cap" ? 422 : 402, check.reason);
+          if (env.ACCOUNT_LIMIT) {
+            const { success } = await env.ACCOUNT_LIMIT.limit({ key: account.id });
+            if (!success) throw new HttpError(429, "slow down");
+          }
 
           const jobId = randomId(12);
           const [created] = await env.DB.batch([
             env.DB.prepare(
-              "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) SELECT ?, ?, ?, ?, ?, ?, 'running', ? WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE pool = ? AND status = 'running')",
-            ).bind(jobId, account.id, walletPool, minutes, resolution, check.cost, now(), walletPool),
+              "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) SELECT ?, ?, ?, ?, ?, ?, 'running', ? WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE pool = ? AND status = 'running' AND created > ?)",
+            ).bind(jobId, account.id, walletPool, minutes, resolution, check.cost, now(), walletPool, now() - RUNNING_JOB_TTL),
             env.DB.prepare(
               "INSERT INTO ledger (pool, kind, credits, ref, job_id, created) SELECT ?, 'debit', ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ?)",
             ).bind(walletPool, -check.cost, `debit:${jobId}`, jobId, now(), jobId),
@@ -105,6 +142,10 @@ export function createApp(deps: Deps = {}) {
             const { success } = await env.ACCOUNT_LIMIT.limit({ key: account.id });
             if (!success) throw new HttpError(429, "slow down");
           }
+          const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM job_calls WHERE job_id = ?")
+            .bind(job.id)
+            .first<{ n: number }>();
+          if ((used?.n ?? 0) >= JOB_CALL_CAP) throw new HttpError(429, "too many calls for this job");
           const r = await falSubmit(env, app, (b.input ?? {}) as Record<string, unknown>);
           await env.DB.prepare("INSERT INTO job_calls (request_id, job_id, app, created) VALUES (?, ?, ?, ?)")
             .bind(r.request_id, job.id, app, now())
@@ -123,7 +164,15 @@ export function createApp(deps: Deps = {}) {
             .bind(call[2], job.id)
             .first<{ app: string }>();
           if (!row) throw new HttpError(404, "request not found");
-          return json(call[3] === "status" ? await falStatus(env, row.app, call[2]) : await falResult(env, row.app, call[2]));
+          if (call[3] === "status") return json(await falStatus(env, row.app, call[2]));
+          const result = await falResult(env, row.app, call[2]);
+          // Remember every video this job actually produced: settlement may not trust the client's word.
+          for (const url of producedVideos(result)) {
+            await env.DB.prepare("INSERT OR IGNORE INTO job_assets (job_id, url, app, created) VALUES (?, ?, ?, ?)")
+              .bind(job.id, url, row.app, now())
+              .run();
+          }
+          return json(result);
         }
 
         if (req.method === "POST" && path === "/upload") {
@@ -154,10 +203,20 @@ export function createApp(deps: Deps = {}) {
           let videoUrl: string | null = null;
 
           if (outcome === "error") {
+            // Full refund on error stays per spec, but a job that already produced a film cannot be refunded as failed.
+            const deliverable = await env.DB.prepare("SELECT app FROM job_assets WHERE job_id = ?")
+              .bind(job.id)
+              .all<{ app: string }>();
+            const film = (deliverable.results ?? []).find((a) => DELIVERABLE_APPS.has(a.app));
+            if (film) throw new HttpError(409, "this job already produced a film; settle it as done");
             refund = job.credits;
           } else if (outcome === "done") {
             videoUrl = falUrl(b.videoUrl);
             if (!videoUrl) throw new HttpError(400, "videoUrl must be a fal media URL");
+            const produced = await env.DB.prepare("SELECT url FROM job_assets WHERE job_id = ? AND url = ?")
+              .bind(job.id, videoUrl)
+              .first<{ url: string }>();
+            if (!produced) throw new HttpError(400, "videoUrl was not produced by this job");
             const { duration } = await falMetadata(env, videoUrl);
             refund = settleRefund(job.minutes, job.resolution, duration);
           } else {
@@ -201,6 +260,12 @@ export function createApp(deps: Deps = {}) {
             // The same subscription presented under the same appAccountToken is a family member, not a replay.
             const shared = !!holder && !!sub.appAccountToken && holder.apple_token === sub.appAccountToken;
             if (holder && !shared) throw new HttpError(409, "receipt is linked to another account");
+          }
+
+          // An expired receipt that is older than the account's current term is a stale replay, not a downgrade:
+          // return the wallet untouched instead of resetting a paying account to trial.
+          if (!active && sub.expiresAt < account.expires_at) {
+            return json({ plan: planOf(account), credits: await balance(env, pool(account)), expiresAt: account.expires_at });
           }
 
           try {
@@ -247,8 +312,9 @@ export function createApp(deps: Deps = {}) {
           const credits = PRODUCTS[sub.productId]?.topup;
           if (!credits) throw new HttpError(400, "not a top-up product");
           if (sub.revoked) throw new HttpError(402, "purchase was revoked");
-          const added = await record(env, pool(account), "topup", credits, `topup:${sub.originalTransactionId}`);
-          return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, pool(account)) });
+          // Consumables are wallet-local: they land in the purchaser's own wallet, never the family pool.
+          const added = await record(env, account.id, "topup", credits, `topup:${sub.originalTransactionId}`);
+          return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, account.id) });
         }
 
         if (req.method === "POST" && path === "/apple/notifications") {

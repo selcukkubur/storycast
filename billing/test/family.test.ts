@@ -56,7 +56,7 @@ async function register(device: string) {
 }
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
   subs.clear();
   subs.set("tx-owner", ownerSub);
@@ -71,11 +71,47 @@ describe("family pool", () => {
     const res = await post("/apple/subscription", member.token, { transactionId: "tx-owner" });
     expect(res.status).toBe(200);
 
-    const wallet = (await (await get("/wallet", member.token)).json()) as { plan: string; credits: number; maxMinutes: number; familyOf: string };
+    const wallet = (await (await get("/wallet", member.token)).json()) as {
+      plan: string;
+      credits: number;
+      maxMinutes: number;
+      familyOf: string;
+      expiresAt: number;
+    };
     expect(wallet.plan).toBe("family");
     expect(wallet.maxMinutes).toBe(5);
     expect(wallet.familyOf).toBe(owner.account);
     expect(wallet.credits).toBe(6);
+    // A member sees the family subscription's expiry, not its own empty one.
+    expect(wallet.expiresAt).toBe(ownerSub.expiresAt);
+  });
+
+  it("credits a member's top-up to the member's own wallet", async () => {
+    const owner = await register("owner-dev");
+    await post("/apple/subscription", owner.token, { transactionId: "tx-owner" });
+    const member = await register("member-dev");
+    await post("/apple/subscription", member.token, { transactionId: "tx-owner" });
+
+    subs.set("tx-topup", {
+      ...ownerSub,
+      productId: "com.storycast.topup.3",
+      plan: "starter",
+      appAccountToken: null,
+      originalTransactionId: "orig-topup",
+    });
+    const res = await post("/apple/topup", member.token, { transactionId: "tx-topup" });
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { creditsAdded: number; creditsLeft: number };
+    expect(b.creditsAdded).toBe(3);
+    // Consumables are wallet-local: the member's trial credit plus the top-up, not the family pool.
+    expect(b.creditsLeft).toBe(4);
+
+    const own = await db.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS b FROM ledger WHERE pool = ?")
+      .bind(member.account)
+      .first<{ b: number }>();
+    expect(own?.b).toBe(4);
+    const ownerWallet = (await (await get("/wallet", owner.token)).json()) as { credits: number };
+    expect(ownerWallet.credits).toBe(6);
   });
 
   it("debits the shared pool from a member's film", async () => {

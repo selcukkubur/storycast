@@ -5,7 +5,7 @@ import schema from "../schema.sql?raw";
 const db = env as unknown as { DB: D1Database };
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
 });
 
@@ -88,9 +88,9 @@ describe("POST /jobs", () => {
     const { token, account } = await register();
     await makeStarter(account);
     await db.DB.prepare(
-      "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, 1, '480P', 1, 'running', 0)",
+      "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, 1, '480P', 1, 'running', ?)",
     )
-      .bind("existing-job", account, account)
+      .bind("existing-job", account, account, Math.floor(Date.now() / 1000))
       .run();
 
     expect(await debitCount(account)).toBe(0);
@@ -101,6 +101,36 @@ describe("POST /jobs", () => {
 
     const jobs = await db.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE pool = ?").bind(account).first<{ n: number }>();
     expect(jobs?.n).toBe(1);
+  });
+
+  it("keeps blocking while a running job is younger than six hours", async () => {
+    const { token, account } = await register();
+    await makeStarter(account);
+    const fresh = Math.floor(Date.now() / 1000) - 5 * 3600;
+    await db.DB.prepare(
+      "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, 1, '480P', 1, 'running', ?)",
+    )
+      .bind("fresh-job", account, account, fresh)
+      .run();
+
+    const res = await start(token, 1);
+    expect(res.status).toBe(409);
+  });
+
+  it("lets a stale running job expire so a crashed client cannot lock the pool", async () => {
+    const { token, account } = await register();
+    await makeStarter(account);
+    const stale = Math.floor(Date.now() / 1000) - 7 * 3600;
+    await db.DB.prepare(
+      "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, 1, '480P', 1, 'running', ?)",
+    )
+      .bind("stale-job", account, account, stale)
+      .run();
+
+    const res = await start(token, 1);
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { jobId: string };
+    expect(b.jobId).toBeTruthy();
   });
 
   it("charges 2 credits for a 768P film", async () => {

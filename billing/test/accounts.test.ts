@@ -2,11 +2,18 @@ import { SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import schema from "../schema.sql?raw";
+import { createApp, type Env } from "../src/index";
 
 const db = env as unknown as { DB: D1Database };
 
+/** The real bindings, with a rate limiter whose verdict is fixed for the test. */
+const withLimiter = (success: boolean): Env => ({
+  ...(env as unknown as Env),
+  ACCOUNT_LIMIT: { limit: async () => ({ success }) },
+});
+
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
 });
 
@@ -68,5 +75,42 @@ describe("accounts", () => {
     expect(res.status).toBe(401);
     const bad = await SELF.fetch("https://billing.local/wallet", { headers: { authorization: "Bearer nope" } });
     expect(bad.status).toBe(401);
+  });
+});
+
+describe("rate limits", () => {
+  const app = createApp();
+  const post = (path: string, payload: unknown, token?: string) =>
+    app.fetch(
+      new Request(`https://billing.local${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload),
+      }),
+      withLimiter(false),
+    );
+
+  it("throttles registration per idfv", async () => {
+    const res = await post("/accounts", { device: "dev-rl", idfv: "idfv-rl" });
+    expect(res.status).toBe(429);
+    const accounts = await db.DB.prepare("SELECT COUNT(*) AS n FROM accounts").first<{ n: number }>();
+    expect(accounts?.n).toBe(0);
+  });
+
+  it("throttles film starts per account", async () => {
+    const registered = await app.fetch(
+      new Request("https://billing.local/accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ device: "dev-rl2", idfv: "idfv-rl2" }),
+      }),
+      withLimiter(true),
+    );
+    const { token } = (await registered.json()) as { token: string };
+
+    const res = await post("/jobs", { minutes: 1, resolution: "480P" }, token);
+    expect(res.status).toBe(429);
+    const jobs = await db.DB.prepare("SELECT COUNT(*) AS n FROM jobs").first<{ n: number }>();
+    expect(jobs?.n).toBe(0);
   });
 });

@@ -40,7 +40,7 @@ const grantRows = async (poolId: string) =>
   (await db.DB.prepare("SELECT COUNT(*) AS n FROM ledger WHERE pool = ? AND ref LIKE 'grant:%'").bind(poolId).first<{ n: number }>())?.n ?? 0;
 
 beforeEach(async () => {
-  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
+  await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls; DROP TABLE IF EXISTS job_assets;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
   current = {
     plan: "starter",
