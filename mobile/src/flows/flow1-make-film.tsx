@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Image, Pressable, ScrollView, View } from "react-native"
+import { FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
-import { Lock, Play, Plus, Ticket } from "lucide-react-native"
+import { Check, ChevronRight, Lock, Play, Plus, Ticket, X } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -11,6 +11,7 @@ import { InputField } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { router } from "expo-router"
 import { NARRATORS, LOOKS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
+import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
 import { STAGE_LABELS, STAGE_ORDER, creditsFor, type Resolution } from "@/src/flows/shared/types"
 
 type Step = "compose" | "gate" | "progress" | "result"
@@ -65,6 +66,9 @@ export default function MakeAFilmFlow() {
   const [look, setLook] = useState(LOOKS[0])
   const [minutes, setMinutes] = useState(1)
   const [resolution, setResolution] = useState<Resolution>("480P")
+  const [langCode, setLangCode] = useState("en")
+  const [langOpen, setLangOpen] = useState(false)
+  const [langQuery, setLangQuery] = useState("")
   const [gateAnswer, setGateAnswer] = useState("")
   const [gateError, setGateError] = useState("")
   const [stageIndex, setStageIndex] = useState(0)
@@ -235,6 +239,30 @@ export default function MakeAFilmFlow() {
                 </HStack>
               </VStack>
 
+              <VStack space="sm">
+                <Eyebrow tone="soft">Narration</Eyebrow>
+                <Pressable
+                  onPress={() => {
+                    setLangQuery("")
+                    setLangOpen(true)
+                  }}
+                  className="active:opacity-90"
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose narration language"
+                >
+                  <View className="flex-row items-center justify-between rounded-3xl bg-ticket p-4" style={CARD_SHADOW}>
+                    <VStack space="xs">
+                      <Text className="text-[15px] font-body-bold text-ink">{languageOf(langCode).native}</Text>
+                      <Text className="text-xs text-ink-soft">{languageOf(langCode).name} · narrators speak it natively</Text>
+                    </VStack>
+                    <HStack space="xs" className="items-center">
+                      <Text className="text-xs font-body-semibold text-ink-soft">{LANGUAGES.length}</Text>
+                      <ChevronRight size={16} stroke="#5A4F66" />
+                    </HStack>
+                  </View>
+                </Pressable>
+              </VStack>
+
               <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
                 <Eyebrow tone="soft">Show settings</Eyebrow>
                 <HStack className="mt-3 justify-between">
@@ -314,6 +342,58 @@ export default function MakeAFilmFlow() {
             </VStack>
           </Animated.View>
         </ScrollView>
+
+        <Modal visible={langOpen} transparent animationType="slide" onRequestClose={() => setLangOpen(false)}>
+          <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(10,14,36,0.55)" }}>
+            <View className="max-h-[82%] rounded-t-3xl bg-paper px-5 pb-8 pt-4">
+              <HStack className="items-center justify-between">
+                <VStack space="xs">
+                  <Eyebrow tone="soft">Narration language</Eyebrow>
+                  <Text className="font-display text-2xl text-ink">Who speaks tonight?</Text>
+                </VStack>
+                <Pressable
+                  onPress={() => setLangOpen(false)}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-ticket"
+                  accessibilityRole="button"
+                  accessibilityLabel="Close language picker"
+                >
+                  <X size={18} stroke="#1B1330" />
+                </Pressable>
+              </HStack>
+              <View className="mt-3 rounded-2xl border border-ink/25 bg-ticket px-4">
+                <InputField value={langQuery} onChangeText={setLangQuery} placeholder="Search 74 languages" accessibilityLabel="Search languages" />
+              </View>
+              <FlatList
+                className="mt-3"
+                data={LANGUAGES.filter(
+                  (l) => !langQuery.trim() || `${l.native} ${l.name} ${l.code}`.toLowerCase().includes(langQuery.trim().toLowerCase()),
+                )}
+                keyExtractor={(l) => l.code}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const active = item.code === langCode
+                  return (
+                    <Pressable
+                      onPress={() => {
+                        setLangCode(item.code)
+                        setLangOpen(false)
+                      }}
+                      className={`min-h-12 flex-row items-center justify-between rounded-xl px-3 py-2.5 ${active ? "bg-royal" : ""}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <VStack space="xs">
+                        <Text className={`text-[15px] font-body-semibold ${active ? "text-ticket" : "text-ink"}`}>{item.native}</Text>
+                        <Text className={`text-xs ${active ? "text-ticket/70" : "text-ink-soft"}`}>{item.name}</Text>
+                      </VStack>
+                      {active ? <Check size={16} stroke="#FFF9F0" /> : null}
+                    </Pressable>
+                  )
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
 
         <View className="absolute bottom-0 left-0 right-0 border-t border-ink/10 bg-paper px-5 pb-8 pt-3">
           <GoldButton
