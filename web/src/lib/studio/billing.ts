@@ -1,6 +1,6 @@
 import type { Plan, Resolution } from "./plans";
 
-const API = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_BILLING_API ?? "";
+const API = (import.meta.env.VITE_BILLING_API as string | undefined) ?? "";
 const KEY = "storycast-billing";
 
 type State = { token: string; jobId?: string };
@@ -91,9 +91,10 @@ export async function billingRun<T>(app: string, input: Record<string, unknown>)
 
   for (let i = 0; i < 40; i++) {
     const st = await call(`/jobs/${jobId}/calls/${rid}/status`);
+    if (!st.ok) throw new BillingError(st.status, `${app}: status ${st.status}`);
     const body = (await st.json()) as { status?: string };
     if (body.status === "COMPLETED") break;
-    if (body.status === "ERROR" || st.status >= 500) throw new BillingError(st.status, `${app}: request failed`);
+    if (body.status === "ERROR") throw new BillingError(st.status, `${app}: request failed`);
     if (i === 39) throw new BillingError(504, `${app}: timed out`);
     await sleep(Math.min(15000, 1500 * (i + 1)));
   }
@@ -120,6 +121,6 @@ export async function settleFilm(outcome: "done" | "error", videoUrl?: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ outcome, videoUrl }),
   });
-  state = { token: state.token };
+  state = state ? { token: state.token } : null;
   save();
 }
