@@ -205,7 +205,11 @@ export function createApp(deps: Deps = {}) {
 
           try {
             await env.DB.prepare(
-              "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ? WHERE id = ?",
+              // A member who activates a subscription of their own stops following the owner's plan and pool,
+              // so an active sync drops the family link it would otherwise never leave.
+              active
+                ? "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ?, family_of = NULL WHERE id = ?"
+                : "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ? WHERE id = ?",
             )
               .bind(
                 active ? sub.plan : "trial",
@@ -221,7 +225,11 @@ export function createApp(deps: Deps = {}) {
               throw new HttpError(409, "receipt is linked to another account");
             throw e;
           }
-          if (active) await grantMonth(env, pool(account), sub.plan);
+          if (active) {
+            // Mirror the cleared link so the grant and the response use the account's own pool.
+            account.family_of = null;
+            await grantMonth(env, pool(account), sub.plan);
+          }
           return json({
             plan: active ? sub.plan : "trial",
             credits: await balance(env, pool(account)),

@@ -18,7 +18,19 @@ const ownerSub: Subscription = {
   revoked: false,
 };
 
-const app = createApp({ verifier: { subscription: async () => ownerSub } });
+// The member's own Starter purchase: a different appAccountToken and originalTransactionId.
+const memberSub: Subscription = {
+  plan: "starter",
+  productId: "com.storycast.starter.monthly",
+  expiresAt: future(),
+  originalTransactionId: "orig-member",
+  appAccountToken: "token-member",
+  environment: "Sandbox",
+  revoked: false,
+};
+
+const subs = new Map<string, Subscription>([["tx-owner", ownerSub]]);
+const app = createApp({ verifier: { subscription: async (transactionId) => subs.get(transactionId) ?? ownerSub } });
 const post = (path: string, token: string, payload: unknown) =>
   app.fetch(
     new Request(`https://billing.local${path}`, {
@@ -46,6 +58,8 @@ async function register(device: string) {
 beforeEach(async () => {
   await db.DB.exec("DROP TABLE IF EXISTS accounts; DROP TABLE IF EXISTS ledger; DROP TABLE IF EXISTS jobs; DROP TABLE IF EXISTS job_calls;");
   await db.DB.exec(schema.replace(/\s+/g, " "));
+  subs.clear();
+  subs.set("tx-owner", ownerSub);
 });
 
 describe("family pool", () => {
@@ -74,6 +88,41 @@ describe("family pool", () => {
     expect(start.status).toBe(200);
     const ownerWallet = (await (await get("/wallet", owner.token)).json()) as { credits: number };
     expect(ownerWallet.credits).toBe(4);
+  });
+
+  it("unlinks a member who activates a subscription of their own", async () => {
+    const owner = await register("owner-dev");
+    await post("/apple/subscription", owner.token, { transactionId: "tx-owner" });
+    const member = await register("member-dev");
+    await post("/apple/subscription", member.token, { transactionId: "tx-owner" });
+
+    const linked = (await (await get("/wallet", member.token)).json()) as { familyOf: string | null; credits: number };
+    expect(linked.familyOf).toBe(owner.account);
+    expect(linked.credits).toBe(6);
+
+    subs.set("tx-member", memberSub);
+    const res = await post("/apple/subscription", member.token, { transactionId: "tx-member" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { plan: string; credits: number };
+    expect(body.plan).toBe("starter");
+    expect(body.credits).toBe(4);
+
+    const wallet = (await (await get("/wallet", member.token)).json()) as {
+      plan: string;
+      credits: number;
+      maxMinutes: number;
+      familyOf: string | null;
+      expiresAt: number;
+    };
+    expect(wallet.plan).toBe("starter");
+    expect(wallet.credits).toBe(4);
+    expect(wallet.maxMinutes).toBe(2);
+    expect(wallet.familyOf).toBeNull();
+    expect(wallet.expiresAt).toBe(memberSub.expiresAt);
+
+    const ownerWallet = (await (await get("/wallet", owner.token)).json()) as { plan: string; credits: number };
+    expect(ownerWallet.plan).toBe("family");
+    expect(ownerWallet.credits).toBe(6);
   });
 
   it("rejects a receipt that belongs to an unrelated account", async () => {
