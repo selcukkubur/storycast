@@ -256,13 +256,20 @@ export function createApp(deps: Deps = {}) {
           const signed = str(b.signedPayload, 20000);
           const segment = signed.split(".")[1];
           if (!segment) throw new HttpError(400, "missing signedPayload");
-          const decoded = JSON.parse(
-            new TextDecoder().decode(Uint8Array.from(atob(segment.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))),
-          ) as { notificationType?: string; data?: { transactionId?: string; originalTransactionId?: string } };
-          const transactionId = decoded.data?.transactionId ?? decoded.data?.originalTransactionId;
+          let decoded: { notificationType?: string; data?: { transactionId?: string; originalTransactionId?: string } };
+          try {
+            decoded = JSON.parse(
+              new TextDecoder().decode(Uint8Array.from(atob(segment.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))),
+            );
+          } catch {
+            throw new HttpError(400, "invalid signedPayload");
+          }
+          const transactionId = decoded?.data?.transactionId ?? decoded?.data?.originalTransactionId;
           const verifier = deps.verifier ?? serverApiVerifier(env);
           if (transactionId) {
             const sub = await verifier.subscription(transactionId);
+            // Consumables carry no plan: a top-up notification must never rewrite subscription terms.
+            if (!PRODUCTS[sub.productId]?.plan) return json({ ok: true });
             const owner = await env.DB.prepare(
               "SELECT id, plan FROM accounts WHERE orig_txn = ? OR apple_token = ?",
             )
