@@ -1,12 +1,14 @@
+import { useMemo, useState } from "react"
 import { Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown } from "react-native-reanimated"
 import { router } from "expo-router"
-import { Play, Sparkles, Ticket } from "lucide-react-native"
+import { LayoutGrid, Play, Sparkles, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { FILMS, NARRATORS, WALLET } from "@/src/flows/shared/mock-data"
+import type { FilmCategory } from "@/src/flows/shared/types"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
@@ -18,13 +20,37 @@ const CARD_SHADOW = {
   elevation: 7,
 } as const
 
-function clock(s: number) {
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+
+const FILTERS: { key: "all" | FilmCategory; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "nature", label: "Nature" },
+  { key: "science", label: "Science" },
+  { key: "history", label: "History" },
+  { key: "machines", label: "Machines" },
+]
+
+function SectionHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
+  return (
+    <HStack className="items-center justify-between">
+      <HStack space="xs" className="items-center">
+        <View style={{ height: 2, width: 16, backgroundColor: "#5A4F66", opacity: 0.6 }} />
+        <Text className={`${EYEBROW} text-ink-soft`}>{title}</Text>
+        {typeof count === "number" ? <Text className="text-xs text-ink-soft">· {count}</Text> : null}
+      </HStack>
+      {children}
+    </HStack>
+  )
 }
 
 export default function HomeScreen() {
-  const hero = FILMS[1]
+  const [filter, setFilter] = useState<"all" | FilmCategory>("all")
+  const [dense, setDense] = useState(false)
+
+  const hero = FILMS.find((f) => !f.watched) ?? FILMS[0]
   const heroNarrator = NARRATORS.find((n) => n.id === hero.narratorId)
+  const fresh = FILMS.slice(0, 6)
+  const shown = useMemo(() => (filter === "all" ? FILMS : FILMS.filter((f) => f.category === filter)), [filter])
 
   return (
     <View className="flex-1 bg-paper">
@@ -43,6 +69,7 @@ export default function HomeScreen() {
             <VStack space="xs">
               <Text className={`${EYEBROW} text-marigold`}>The little picture house</Text>
               <Text className="font-display text-[30px] leading-[36px] text-ticket">Tonight's programme</Text>
+              <Text className="text-[13px] text-ticket/85">{FILMS.length} films · {FILMS.filter((f) => !f.watched).length} waiting for you</Text>
             </VStack>
             <Pressable
               onPress={() => router.push("/account")}
@@ -71,7 +98,7 @@ export default function HomeScreen() {
                     {hero.title}
                   </Text>
                   <HStack className="mt-1 justify-between">
-                    <Text className="text-xs text-ticket/70">
+                    <Text className="text-xs text-ticket/85">
                       {heroNarrator?.name} · {hero.created}
                     </Text>
                     <Text className={`${EYEBROW} text-marigold`}>{clock(hero.durationSec)}</Text>
@@ -88,36 +115,102 @@ export default function HomeScreen() {
               </View>
             </Pressable>
 
-            <View>
-              <HStack className="items-center justify-between">
-                <HStack space="xs" className="items-center">
-                  <View style={{ height: 2, width: 16, backgroundColor: "#6F6480", opacity: 0.7 }} />
-                  <Text className={`${EYEBROW} text-ink-soft`}>Family library</Text>
-                </HStack>
-                <Text className="text-xs text-ink-soft">{FILMS.length} films</Text>
-              </HStack>
-              <View className="mt-3 flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
-                {FILMS.map((f) => {
-                  const n = NARRATORS.find((x) => x.id === f.narratorId)
-                  return (
-                    <Pressable key={f.id} onPress={() => router.push("/watch")} className="w-[48%]" accessibilityRole="button">
-                      <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
-                        <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                        <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
-                          <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
-                        </View>
+            <VStack space="sm">
+              <SectionHeader title="Fresh this week" count={fresh.length} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 4 }}>
+                {fresh.map((f) => (
+                  <Pressable key={`fresh-${f.id}`} onPress={() => router.push("/watch")} className="w-36" accessibilityRole="button">
+                    <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
+                      <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
+                      <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                        <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                       </View>
-                      <Text className="mt-2 font-body-semibold text-sm text-ink" numberOfLines={2}>
-                        {f.title}
-                      </Text>
-                      <Text className="text-xs text-ink-soft">
-                        {n?.name} · {f.created}
-                      </Text>
+                      {!f.watched ? (
+                        <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
+                          <Text className={`${EYEBROW} text-ticket`}>New</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text className="mt-2 font-body-semibold text-[13px] leading-5 text-ink" numberOfLines={2}>
+                      {f.title}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </VStack>
+
+            <VStack space="sm">
+              <SectionHeader title="Family library" count={shown.length}>
+                <Pressable
+                  onPress={() => setDense((d) => !d)}
+                  className="h-11 min-w-11 flex-row items-center justify-center gap-1.5 rounded-full border border-ink/15 bg-ticket px-3 active:bg-paper"
+                  accessibilityRole="button"
+                  accessibilityLabel={dense ? "Show bigger posters" : "Show more films per row"}
+                >
+                  <LayoutGrid size={14} stroke="#22319B" />
+                  <Text className="text-xs font-body-bold text-ink">{dense ? "2-up" : "3-up"}</Text>
+                </Pressable>
+              </SectionHeader>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {FILTERS.map((f) => {
+                  const active = filter === f.key
+                  return (
+                    <Pressable
+                      key={f.key}
+                      onPress={() => setFilter(f.key)}
+                      className={`min-h-11 justify-center rounded-full px-4 ${active ? "bg-royal" : "border border-ink/15 bg-ticket"}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text className={`text-sm ${active ? "font-body-bold text-ticket" : "text-ink"}`}>{f.label}</Text>
                     </Pressable>
                   )
                 })}
-              </View>
-            </View>
+              </ScrollView>
+
+              {shown.length === 0 ? (
+                <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
+                  <Text className="font-display text-xl text-ink">Nothing here yet</Text>
+                  <Text className="mt-1 text-center text-[13px] leading-5 text-ink-soft">Make a film in this category and it will appear in the library.</Text>
+                </View>
+              ) : (
+                <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
+                  {shown.map((f) => {
+                    const n = NARRATORS.find((x) => x.id === f.narratorId)
+                    return (
+                      <Pressable
+                        key={f.id}
+                        onPress={() => router.push("/watch")}
+                        style={{ width: dense ? "31.5%" : "48%" }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${f.title}, ${clock(f.durationSec)}`}
+                      >
+                        <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
+                          <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
+                          <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                            <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                          </View>
+                          {!f.watched ? (
+                            <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
+                              <Text className={`${EYEBROW} text-ticket`}>New</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text className={`mt-2 font-body-semibold text-ink ${dense ? "text-xs leading-4" : "text-[13px] leading-5"}`} numberOfLines={2}>
+                          {f.title}
+                        </Text>
+                        {!dense ? (
+                          <Text className="text-xs text-ink-soft" numberOfLines={1}>
+                            {n?.name} · {f.created}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              )}
+            </VStack>
 
             <Pressable onPress={() => router.push("/create")} accessibilityRole="button">
               <LinearGradient

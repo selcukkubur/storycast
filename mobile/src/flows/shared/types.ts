@@ -12,6 +12,8 @@ export type Narrator = {
   voice: string
 }
 
+export type FilmCategory = "nature" | "science" | "history" | "machines"
+
 export type Film = {
   id: string
   title: string
@@ -19,6 +21,7 @@ export type Film = {
   durationSec: number
   created: string
   watched: boolean
+  category: FilmCategory
   poster: ImageSourcePropType
 }
 
