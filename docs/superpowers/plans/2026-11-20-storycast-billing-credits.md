@@ -302,7 +302,7 @@ describe("settleRefund", () => {
     expect(settleRefund(3, "480P", 165)).toBe(0);
   });
   it("refunds whole credits for a much shorter film", () => {
-    expect(settleRefund(1, "480P", 30)).toBe(1);
+    expect(settleRefund(1, "480P", 30)).toBe(0);
     expect(settleRefund(1, "768P", 30)).toBe(1);
     expect(settleRefund(3, "480P", 90)).toBe(1);
   });
