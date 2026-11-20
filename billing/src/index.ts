@@ -1,7 +1,7 @@
 import { authenticate, createAccount, planOf, pool } from "./accounts";
 import { PLANS, canStart, type Resolution } from "./credits";
 import { HttpError, json, num, now, randomId, str } from "./http";
-import { balance, record } from "./ledger";
+import { balance } from "./ledger";
 
 export interface Env {
   DB: D1Database;
@@ -65,18 +65,17 @@ export function createApp() {
           const check = canStart(plan, credits, minutes, resolution as Resolution);
           if (!check.ok) throw new HttpError(check.reason === "cap" ? 422 : 402, check.reason);
 
-          const running = await env.DB.prepare("SELECT id FROM jobs WHERE pool = ? AND status = 'running' LIMIT 1")
-            .bind(walletPool)
-            .first<{ id: string }>();
-          if (running) throw new HttpError(409, "a film is already in production");
-
           const jobId = randomId(12);
-          await record(env, walletPool, "debit", -check.cost, `debit:${jobId}`, jobId);
-          await env.DB.prepare(
-            "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
-          )
-            .bind(jobId, account.id, walletPool, minutes, resolution, check.cost, now())
-            .run();
+          const [created] = await env.DB.batch([
+            env.DB.prepare(
+              "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) SELECT ?, ?, ?, ?, ?, ?, 'running', ? WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE pool = ? AND status = 'running')",
+            ).bind(jobId, account.id, walletPool, minutes, resolution, check.cost, now(), walletPool),
+            env.DB.prepare(
+              "INSERT INTO ledger (pool, kind, credits, ref, job_id, created) SELECT ?, 'debit', ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ?)",
+            ).bind(walletPool, -check.cost, `debit:${jobId}`, jobId, now(), jobId),
+          ]);
+
+          if ((created?.meta?.changes ?? 0) === 0) throw new HttpError(409, "a film is already in production");
           return json({ jobId, cost: check.cost, creditsLeft: credits - check.cost, watermark: plan === "trial" });
         }
 

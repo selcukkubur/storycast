@@ -32,6 +32,19 @@ async function makeStarter(account: string) {
     .run();
 }
 
+async function grant(account: string, credits: number) {
+  await db.DB.prepare("INSERT INTO ledger (pool, kind, credits, ref, created) VALUES (?, 'grant', ?, ?, 0)")
+    .bind(account, credits, `grant:test:${account}:${credits}`)
+    .run();
+}
+
+async function debitCount(pool: string) {
+  const row = await db.DB.prepare("SELECT COUNT(*) AS n FROM ledger WHERE pool = ? AND kind = 'debit'")
+    .bind(pool)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 describe("POST /jobs", () => {
   it("starts a trial film and debits its only credit", async () => {
     const { token } = await register();
@@ -69,5 +82,44 @@ describe("POST /jobs", () => {
     const { token } = await register();
     const res = await start(token, 1, "1080P");
     expect(res.status).toBe(400);
+  });
+
+  it("refuses a film when a running job already exists and debits nothing", async () => {
+    const { token, account } = await register();
+    await makeStarter(account);
+    await db.DB.prepare(
+      "INSERT INTO jobs (id, account, pool, minutes, resolution, credits, status, created) VALUES (?, ?, ?, 1, '480P', 1, 'running', 0)",
+    )
+      .bind("existing-job", account, account)
+      .run();
+
+    expect(await debitCount(account)).toBe(0);
+
+    const res = await start(token, 1);
+    expect(res.status).toBe(409);
+    expect(await debitCount(account)).toBe(0);
+
+    const jobs = await db.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE pool = ?").bind(account).first<{ n: number }>();
+    expect(jobs?.n).toBe(1);
+  });
+
+  it("charges 2 credits for a 768P film", async () => {
+    const { token, account } = await register();
+    await makeStarter(account);
+    await grant(account, 3);
+    expect(await debitCount(account)).toBe(0);
+
+    const res = await start(token, 1, "768P");
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { jobId: string; cost: number; creditsLeft: number; watermark: boolean };
+    expect(b.cost).toBe(2);
+    expect(b.creditsLeft).toBe(4);
+    expect(b.watermark).toBe(false);
+
+    const debit = await db.DB.prepare("SELECT credits, job_id FROM ledger WHERE ref = ?")
+      .bind(`debit:${b.jobId}`)
+      .first<{ credits: number; job_id: string }>();
+    expect(debit?.credits).toBe(-2);
+    expect(debit?.job_id).toBe(b.jobId);
   });
 });
