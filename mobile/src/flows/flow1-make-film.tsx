@@ -440,7 +440,7 @@ export default function MakeAFilmFlow() {
                         <Text className={`flex-1 text-sm ${done ? "text-ticket/40" : active ? "font-body-bold text-ticket" : "text-ticket/30"}`}>
                           {STAGE_LABELS[stage]}
                         </Text>
-                        {active ? <Spinner size="small" /> : done ? <Text className="text-[10px] text-marigold">done</Text> : null}
+                        {active ? <Spinner size="small" /> : done ? <Text className="text-[11px] font-body-bold text-marigold">done</Text> : null}
                       </HStack>
                     </View>
                   )

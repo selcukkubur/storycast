@@ -8,7 +8,7 @@ import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { LEDGER, WALLET } from "@/src/flows/shared/mock-data"
 
-const EYEBROW = "font-body-semibold text-[10px] uppercase tracking-[2.5px]"
+const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
 const CARD_SHADOW = {
   shadowColor: "#1B1330",
@@ -32,9 +32,9 @@ export default function AccountScreen() {
           <Text className={`${EYEBROW} text-marigold`}>Your ticket book</Text>
           <HStack space="sm" className="mt-1 items-baseline">
             <Text className="font-display text-[56px] leading-[60px] text-ticket">{WALLET.credits}</Text>
-            <Text className="text-sm text-ticket/60">tickets left</Text>
+            <Text className="text-[15px] text-ticket/85">tickets left</Text>
           </HStack>
-          <Text className="mt-1 text-xs leading-4 text-ticket/60">{WALLET.rolloverNote}</Text>
+          <Text className="mt-1 text-[13px] leading-5 text-ticket/85">{WALLET.rolloverNote}</Text>
         </LinearGradient>
 
         <Animated.View entering={FadeInDown.duration(420)}>
@@ -51,7 +51,7 @@ export default function AccountScreen() {
                 </View>
                 <VStack space="xs" className="flex-1">
                   <Text className="font-display text-lg leading-6 text-ink">Starter book · renews monthly</Text>
-                  <Text className="text-xs text-ink/70">Change plan or top up tickets</Text>
+                  <Text className="text-[13px] leading-5 text-ink/80">Change plan or top up tickets</Text>
                 </VStack>
                 <ChevronRight size={16} stroke="#1B1330" />
               </LinearGradient>
@@ -66,9 +66,9 @@ export default function AccountScreen() {
                       <Text className="text-sm text-ink" numberOfLines={1}>
                         {tx.label}
                       </Text>
-                      <Text className="text-[11px] text-ink-soft">{tx.when}</Text>
+                      <Text className="text-xs text-ink-soft">{tx.when}</Text>
                     </VStack>
-                    <Text className={`font-body-bold text-sm ${tx.credits > 0 ? "text-mint" : "text-red-600"}`}>
+                    <Text className={`font-body-bold text-[15px] ${tx.credits > 0 ? "text-mint" : "text-red-600"}`}>
                       {tx.credits > 0 ? `+${tx.credits}` : tx.credits}
                     </Text>
                   </HStack>
@@ -82,15 +82,15 @@ export default function AccountScreen() {
                 { icon: <Users size={16} stroke="#22319B" />, title: "Family sharing" },
                 { icon: <HelpCircle size={16} stroke="#22319B" />, title: "Help and feedback" },
               ].map((row, i) => (
-                <Pressable key={row.title} className={`min-h-12 flex-row items-center gap-3 px-4 py-3 active:bg-paper/60 ${i > 0 ? "border-t border-ink/5" : ""}`}>
+                <Pressable key={row.title} accessibilityRole="button" className={`min-h-12 flex-row items-center gap-3 px-4 py-3 active:bg-paper/60 ${i > 0 ? "border-t border-ink/5" : ""}`}>
                   <View className="h-9 w-9 items-center justify-center rounded-full bg-paper">{row.icon}</View>
-                  <Text className="flex-1 text-sm font-body-semibold text-ink">{row.title}</Text>
+                  <Text className="flex-1 text-[15px] font-body-bold text-ink">{row.title}</Text>
                   <ChevronRight size={16} stroke="#6F6480" />
                 </Pressable>
               ))}
             </View>
 
-            <Text className="text-center text-[11px] text-ink-soft">Storycast 0.1 · every frame made on fal</Text>
+            <Text className="text-center text-xs text-ink-soft">Storycast 0.1 · every frame made on fal</Text>
           </VStack>
         </Animated.View>
       </ScrollView>
