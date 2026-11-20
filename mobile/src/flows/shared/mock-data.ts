@@ -63,10 +63,16 @@ export const TOPIC_CHIPS = ["Why is the sky blue?", "How do bees make honey?", "
 export const LOOKS = ["Stick figure", "Whiteboard doodle", "Watercolor anime", "Claymation", "Papercraft diorama"]
 
 export const FILMS: Film[] = [
-  { id: "kai-wind", title: "Kai and the secret of the wind", narratorId: "pip", durationSec: 63, created: "2 days ago", watched: true, poster: posterFiles[0] },
-  { id: "stella-cable", title: "Stella and the cable under the sea", narratorId: "rose", durationSec: 62, created: "4 days ago", watched: false, poster: posterFiles[1] },
-  { id: "bruno-mine", title: "Bruno und der bergmannsgruß", narratorId: "otto", durationSec: 59, created: "6 days ago", watched: true, poster: posterFiles[2] },
-  { id: "mei-kites", title: "Granny Mei and the first kites in the wind", narratorId: "rose", durationSec: 56, created: "1 week ago", watched: true, poster: posterFiles[3] },
+  { id: "kai-wind", title: "Kai and the secret of the wind", narratorId: "pip", durationSec: 63, created: "2 days ago", watched: true, category: "science", poster: posterFiles[0] },
+  { id: "stella-cable", title: "Stella and the cable under the sea", narratorId: "rose", durationSec: 62, created: "4 days ago", watched: false, category: "machines", poster: posterFiles[1] },
+  { id: "bruno-mine", title: "Bruno und der bergmannsgruß", narratorId: "otto", durationSec: 59, created: "6 days ago", watched: true, category: "history", poster: posterFiles[2] },
+  { id: "mei-kites", title: "Granny Mei and the first kites in the wind", narratorId: "rose", durationSec: 56, created: "1 week ago", watched: true, category: "history", poster: posterFiles[3] },
+  { id: "hazel-leaves", title: "Hazel and why leaves change colour", narratorId: "hazel", durationSec: 71, created: "1 week ago", watched: false, category: "nature", poster: posterFiles[4] },
+  { id: "otto-gears", title: "Otto and the tiny gears inside clocks", narratorId: "otto", durationSec: 58, created: "2 weeks ago", watched: false, category: "machines", poster: posterFiles[5] },
+  { id: "pip-volcano", title: "Pip and the volcano that made an island", narratorId: "pip", durationSec: 66, created: "2 weeks ago", watched: true, category: "nature", poster: posterFiles[0] },
+  { id: "lulu-photos", title: "Lulu and the very first photograph", narratorId: "lulu", durationSec: 61, created: "3 weeks ago", watched: true, category: "history", poster: posterFiles[1] },
+  { id: "mo-rain", title: "Mo and where rain really comes from", narratorId: "mo", durationSec: 55, created: "3 weeks ago", watched: false, category: "science", poster: posterFiles[2] },
+  { id: "rose-honey", title: "Grandma Rose and how bees make honey", narratorId: "rose", durationSec: 69, created: "1 month ago", watched: true, category: "nature", poster: posterFiles[3] },
 ]
 
 export const WALLET: Wallet = { plan: "starter", credits: 3, maxMinutes: 2, rolloverNote: "Unused tickets roll over one month, up to 6." }
