@@ -15,5 +15,5 @@ export default function RootLayout() {
 
   if (!loaded) return null
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#F4EFE3" } }} />
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FBEDE2" } }} />
 }

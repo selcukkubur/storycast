@@ -4,14 +4,15 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        curtain: "#56202E",
-        velvet: "#7A3244",
-        brass: "#D9A441",
-        paper: "#F4EFE3",
-        ticket: "#FBF7EC",
-        ink: "#241B17",
-        "ink-soft": "#6B5E55",
-        moss: "#3F6B4F",
+        night: "#141C57",
+        royal: "#22319B",
+        marigold: "#FFB627",
+        coral: "#F4738C",
+        paper: "#FBEDE2",
+        ticket: "#FFF9F0",
+        ink: "#1B1330",
+        "ink-soft": "#6F6480",
+        mint: "#2E7D6B",
       },
       fontFamily: {
         display: ["Fraunces_600SemiBold"],
