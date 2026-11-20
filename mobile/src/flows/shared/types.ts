@@ -17,7 +17,9 @@ export type FilmCategory = "nature" | "science" | "history" | "machines"
 export type Film = {
   id: string
   title: string
-  narratorId: string
+  subtitle: string
+  narrator: string
+  styleLabel: string
   durationSec: number
   created: string
   watched: boolean
