@@ -1,3 +1,3 @@
-import SetupCheck from "./setup-check"
+import MakeAFilmFlow from "@/src/flows/flow1-make-film"
 
-export default SetupCheck
+export default MakeAFilmFlow
