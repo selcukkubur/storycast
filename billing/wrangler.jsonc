@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "storycast-billing",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": { "APPLE_ENVIRONMENT": "sandbox" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "storycast-billing", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "ratelimits": [
+    { "name": "ACCOUNT_LIMIT", "namespace_id": "2001", "simple": { "limit": 30, "period": 60 } }
+  ]
+}
