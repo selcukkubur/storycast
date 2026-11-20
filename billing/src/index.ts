@@ -251,6 +251,34 @@ export function createApp(deps: Deps = {}) {
           return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, pool(account)) });
         }
 
+        if (req.method === "POST" && path === "/apple/notifications") {
+          const b = await body(req);
+          const signed = str(b.signedPayload, 20000);
+          const segment = signed.split(".")[1];
+          if (!segment) throw new HttpError(400, "missing signedPayload");
+          const decoded = JSON.parse(
+            new TextDecoder().decode(Uint8Array.from(atob(segment.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))),
+          ) as { notificationType?: string; data?: { transactionId?: string; originalTransactionId?: string } };
+          const transactionId = decoded.data?.transactionId ?? decoded.data?.originalTransactionId;
+          const verifier = deps.verifier ?? serverApiVerifier(env);
+          if (transactionId) {
+            const sub = await verifier.subscription(transactionId);
+            const owner = await env.DB.prepare(
+              "SELECT id, plan FROM accounts WHERE orig_txn = ? OR apple_token = ?",
+            )
+              .bind(sub.originalTransactionId, sub.appAccountToken ?? "")
+              .first<{ id: string; plan: Plan }>();
+            if (owner) {
+              const active = !sub.revoked && sub.expiresAt > Date.now() / 1000;
+              await env.DB.prepare("UPDATE accounts SET expires_at = ?, plan = ? WHERE id = ?")
+                .bind(active ? sub.expiresAt : 0, active ? sub.plan : "trial", owner.id)
+                .run();
+              if (active) await grantMonth(env, owner.id, sub.plan);
+            }
+          }
+          return json({ ok: true });
+        }
+
         throw new HttpError(404, "not found");
       } catch (e) {
         if (e instanceof HttpError) return json({ error: e.message }, e.status);
