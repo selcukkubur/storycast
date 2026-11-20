@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
-import { Lock, Play, Ticket } from "lucide-react-native"
+import { Lock, Play, Plus, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { Button, ButtonText } from "@/components/ui/button"
 import { InputField } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
+import { router } from "expo-router"
 import { NARRATORS, LOOKS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
 import { STAGE_LABELS, STAGE_ORDER, creditsFor, type Resolution } from "@/src/flows/shared/types"
 
@@ -201,6 +202,17 @@ export default function MakeAFilmFlow() {
                         </Pressable>
                       )
                     })}
+                    <Pressable
+                      onPress={() => router.push("/narrator")}
+                      className="w-32"
+                      accessibilityRole="button"
+                      accessibilityLabel="Create a narrator"
+                    >
+                      <View className="h-[122px] items-center justify-center rounded-[22px] border-2 border-dashed border-ink/20 bg-ticket/60">
+                        <Plus size={22} stroke="#6F6480" />
+                        <Text className="mt-1 text-[11px] text-ink-soft">New narrator</Text>
+                      </View>
+                    </Pressable>
                   </HStack>
                 </ScrollView>
                 <Text className="text-xs leading-4 text-ink-soft">

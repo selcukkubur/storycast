@@ -2,12 +2,49 @@
   "project_name": "storycast-mobile",
   "scenario": "design-tools",
   "tech_stack": "React Native (Expo + NativeWind + local Gluestack-style components)",
-  "generated_at": "2026-11-20T20:40:00Z",
+  "generated_at": "2026-11-20T19:48:44.444799+00:00",
   "flows": [
-    { "name": "Make a Film", "file_path": "mobile/src/flows/flow1-make-film.tsx", "screens": 4, "entry": "Create tab", "exit": "Success: result premiere | Error: refund + retry | Abandon: job continues" },
-    { "name": "Buy Tickets (Paywall)", "file_path": "mobile/src/flows/flow2-paywall.tsx", "screens": 4, "entry": "Account tab, composer upsell, trial end", "exit": "Success: plan active + wallet | Error: purchase cancelled | Abandon: close" },
-    { "name": "Watch & Share", "file_path": "mobile/src/flows/flow3-watch-share.tsx", "screens": 3, "entry": "Home hero, library, notification", "exit": "Success: watched/shared | Error: retry/download | Abandon: back" },
-    { "name": "Custom Narrator", "file_path": "mobile/src/flows/flow4-custom-narrator.tsx", "screens": 3, "entry": "Create tab cast row", "exit": "Success: saved to cast | Error: retry (no charge) | Abandon: nothing saved", "status": "pending" }
+    {
+      "name": "Make a Film",
+      "file_path": "mobile/src/flows/flow1-make-film.tsx",
+      "screens": 4,
+      "entry": "Create tab",
+      "exit": "Success: result premiere | Error: refund + retry | Abandon: job continues"
+    },
+    {
+      "name": "Buy Tickets (Paywall)",
+      "file_path": "mobile/src/flows/flow2-paywall.tsx",
+      "screens": 4,
+      "entry": "Account tab, composer upsell, trial end",
+      "exit": "Success: plan active + wallet | Error: purchase cancelled | Abandon: close"
+    },
+    {
+      "name": "Watch & Share",
+      "file_path": "mobile/src/flows/flow3-watch-share.tsx",
+      "screens": 3,
+      "entry": "Home hero, library, notification",
+      "exit": "Success: watched/shared | Error: retry/download | Abandon: back"
+    },
+    {
+      "name": "Custom Narrator",
+      "file_path": "mobile/src/flows/flow4-custom-narrator.tsx",
+      "screens": 3,
+      "entry": "Create tab cast row",
+      "exit": "Success: saved to cast | Error: retry (no charge) | Abandon: nothing saved"
+    }
   ],
-  "design_system": { "palette": ["#2A3BC0", "#131A4E", "#FFB627", "#F4738C", "#FBEDE2", "#FFF9F0", "#1B1330"], "display_font": "Fraunces 600", "body_font": "Nunito", "signature": "credits as admission tickets with perforated stub" }
+  "design_system": {
+    "palette": [
+      "#2A3BC0",
+      "#131A4E",
+      "#FFB627",
+      "#F4738C",
+      "#FBEDE2",
+      "#FFF9F0",
+      "#1B1330"
+    ],
+    "display_font": "Fraunces 600",
+    "body_font": "Nunito",
+    "signature": "credits as admission tickets with perforated stub"
+  }
 }

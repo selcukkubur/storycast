@@ -53,7 +53,7 @@ export default function WatchFlow() {
                   Tonight at the <Text className="font-display-italic text-marigold">picture house.</Text>
                 </Text>
               </VStack>
-              <Pressable onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20" accessibilityLabel="Close">
+              <Pressable onPress={() => router.back()} className="h-11 w-11 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20" accessibilityLabel="Close">
                 <X size={18} stroke="#FFF9F0" />
               </Pressable>
             </HStack>
@@ -71,6 +71,12 @@ export default function WatchFlow() {
                 </View>
               </HStack>
 
+              {FILMS.length === 0 ? (
+                <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
+                  <Text className="font-display text-xl text-ink">Nothing in the library yet</Text>
+                  <Text className="mt-1 text-xs text-ink-soft">Your first film takes about six minutes to make.</Text>
+                </View>
+              ) : null}
               <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
                 {FILMS.map((f) => {
                   const n = NARRATORS.find((x) => x.id === f.narratorId)
@@ -123,10 +129,10 @@ export default function WatchFlow() {
               <Image source={film.poster} className="aspect-[4/3] w-full" resizeMode="cover" />
               <LinearGradient colors={["rgba(13,18,60,0.35)", "transparent"]} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 120 }} />
               <HStack className="absolute left-4 right-4 top-14 justify-between">
-                <Pressable onPress={() => setStep("library")} className="h-10 w-10 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Back">
+                <Pressable onPress={() => setStep("library")} className="h-11 w-11 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Back">
                   <ChevronLeft size={18} stroke="#FFF9F0" />
                 </Pressable>
-                <Pressable onPress={() => setStep("share")} className="h-10 w-10 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Share">
+                <Pressable onPress={() => setStep("share")} className="h-11 w-11 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Share">
                   <Share2 size={17} stroke="#FFF9F0" />
                 </Pressable>
               </HStack>
@@ -209,7 +215,7 @@ export default function WatchFlow() {
                 {film.title}
               </Text>
             </VStack>
-            <Pressable onPress={() => setStep("player")} className="h-9 w-9 items-center justify-center rounded-full bg-ink/5" accessibilityLabel="Close">
+            <Pressable onPress={() => setStep("player")} className="h-11 w-11 items-center justify-center rounded-full bg-ink/5" accessibilityLabel="Close">
               <X size={16} stroke="#1B1330" />
             </Pressable>
           </HStack>
