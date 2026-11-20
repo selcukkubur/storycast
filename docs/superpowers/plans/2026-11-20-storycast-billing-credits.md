@@ -1509,7 +1509,7 @@ export function serverApiVerifier(env: AppleEnv): AppleVerifier {
         env.APPLE_ENVIRONMENT === "production"
           ? "https://api.storekit.itunes.apple.com"
           : "https://api.storekit-sandbox.itunes.apple.com";
-      const r = await fetch(`${host}/inApps/v2/transactions/${encodeURIComponent(transactionId)}`, {
+      const r = await fetch(`${host}/inApps/v1/transactions/${encodeURIComponent(transactionId)}`, {
         headers: { authorization: `Bearer ${await serverJwt(env)}` },
       });
       if (!r.ok) throw new Error(`apple lookup answered ${r.status}`);
