@@ -1,4 +1,5 @@
 import { ApiError, fal } from "@fal-ai/client";
+import { billingActive, billingRun, billingUpload } from "./billing";
 
 const KEY = "storycast-fal-key";
 
@@ -138,6 +139,7 @@ async function follow<T>(app: string, requestId: string): Promise<T> {
 }
 
 export async function run<T = any>(app: string, input: Record<string, unknown>, retries = 1): Promise<T> {
+  if (billingActive()) return billingRun<T>(app, input);
   if (!falKey()) {
     askForKey();
     throw new FalError("Connect your fal key to make films", 401);
@@ -173,6 +175,7 @@ export async function duration(url: string): Promise<number> {
 }
 
 export function upload(file: File): Promise<string> {
+  if (billingActive()) return billingUpload(file);
   if (!falKey()) {
     askForKey();
     return Promise.reject(new FalError("Connect your fal key to upload images", 401));
