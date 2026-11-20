@@ -513,7 +513,7 @@ export default function MakeAFilmFlow() {
           </View>
 
           <VStack space="sm">
-            <GoldButton label="Watch now" onPress={() => {}} icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />} />
+            <GoldButton label="Watch now" onPress={() => router.push({ pathname: "/watch", params: { id: FILMS[0].id } })} icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />} />
             <Button variant="outline" className="min-h-[54px] rounded-2xl" onPress={() => setStep("compose")}>
               <ButtonText>Make another</ButtonText>
             </Button>

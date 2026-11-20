@@ -1,9 +1,23 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
-import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
-import { router } from "expo-router"
-import { ChevronLeft, Download, MessageCircle, Pause, Play, RotateCw, Share2, X } from "lucide-react-native"
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated"
+import { router, useLocalSearchParams } from "expo-router"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import {
+  ChevronLeft,
+  Download,
+  Gauge,
+  MessageCircle,
+  Pause,
+  Play,
+  RotateCcw,
+  Share2,
+  SkipBack,
+  SkipForward,
+  Subtitles,
+  X,
+} from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -12,106 +26,113 @@ import { FILMS } from "@/src/flows/shared/mock-data"
 type Step = "library" | "player" | "share"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
-const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
-const CARD_SHADOW = {
-  shadowColor: "#1B1330",
-  shadowOpacity: 0.14,
-  shadowRadius: 22,
-  shadowOffset: { width: 0, height: 14 },
-  elevation: 7,
-} as const
+const INK = "#0A0E24"
+const MARIGOLD = "#FFB627"
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
 
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+function Chip({ label }: { label: string }) {
+  return (
+    <View className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1">
+      <Text className="text-[11px] font-body-semibold text-ticket/90">{label}</Text>
+    </View>
+  )
+}
 
 /* ================================================
    FLOW: Watch & Share
-   SCREENS 1-3: Library → Player → Share
+   SCREENS: Library ↔ Player → Share
    PLATFORM: React Native (Expo + NativeWind + local Gluestack-style components)
-   ENTRY:  Home hero · notification · result screen
-   EXIT:   ✅ watched/shared · ↩ back to library
+   ENTRY:  Home poster deep-link (?id=) · notification · result screen
+   EXIT:   ✅ watched/shared · ↩ back
    ================================================ */
 export default function WatchFlow() {
-  const [step, setStep] = useState<Step>("library")
-  const [filmId, setFilmId] = useState(FILMS[0].id)
+  const insets = useSafeAreaInsets()
+  const params = useLocalSearchParams<{ id?: string }>()
+  const deepId = typeof params.id === "string" && FILMS.some((f) => f.id === params.id) ? params.id : undefined
+
+  const [step, setStep] = useState<Step>(deepId ? "player" : "library")
+  const [filmId, setFilmId] = useState(deepId ?? FILMS[0].id)
   const [playing, setPlaying] = useState(true)
   const [subtitles, setSubtitles] = useState(true)
+  const [pos, setPos] = useState(24)
 
   const film = useMemo(() => FILMS.find((f) => f.id === filmId) ?? FILMS[0], [filmId])
+  const upNext = useMemo(() => FILMS.filter((f) => f.id !== film.id).slice(0, 6), [film.id])
+  const progress = Math.min(1, pos / film.durationSec)
 
-  /* SCREEN 1 — Library */
+  useEffect(() => {
+    if (step !== "player" || !playing) return
+    const t = setInterval(() => setPos((p) => (p + 1 >= film.durationSec ? film.durationSec : p + 1)), 1000)
+    return () => clearInterval(t)
+  }, [step, playing, film.durationSec])
+
+  useEffect(() => {
+    setPos(24)
+    setPlaying(true)
+  }, [film.id])
+
+  const openFilm = (id: string) => {
+    setFilmId(id)
+    setStep("player")
+  }
+
+  /* SCREEN 1 — Library (reached only via back / direct route) */
   if (step === "library") {
     return (
-      <View className="flex-1 bg-paper">
-        <ScrollView contentContainerClassName="pb-10">
-          <LinearGradient colors={NOCTURNE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingHorizontal: 20, paddingTop: 60, paddingBottom: 44, borderBottomLeftRadius: 36, borderBottomRightRadius: 36 }}>
-            <View className="absolute -right-12 top-4 h-44 w-44 rounded-full border border-marigold/20" />
-            <HStack className="justify-between">
+      <View className="flex-1" style={{ backgroundColor: INK }}>
+        <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
+          <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 20 }}>
+            <HStack className="items-center justify-between">
               <VStack space="xs">
                 <Text className={`${EYEBROW} text-marigold`}>The family library</Text>
-                <Text className="font-display text-[34px] leading-[40px] text-ticket">
-                  Tonight at the <Text className="font-display-italic text-marigold">picture house.</Text>
-                </Text>
+                <Text className="font-display text-[30px] leading-9 text-ticket">All our films</Text>
               </VStack>
-              <Pressable onPress={() => router.back()} className="h-11 w-11 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20" accessibilityLabel="Close">
+              <Pressable
+                onPress={() => router.back()}
+                className="h-11 w-11 items-center justify-center rounded-full bg-white/10"
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
                 <X size={18} stroke="#FFF9F0" />
               </Pressable>
             </HStack>
-            <Text className="mt-2 text-sm leading-5 text-ticket/70">{FILMS.length} films made in this house.</Text>
-          </LinearGradient>
+            <Text className="mt-1 text-[13px] text-ticket/70">{FILMS.length} films made in this house</Text>
+          </View>
 
-          <Animated.View entering={FadeInDown.duration(420)}>
-            <VStack space="md" className="-mt-6 px-5">
-              <HStack space="sm">
-                <View className="rounded-full bg-royal px-3 py-1.5">
-                  <Text className="text-xs font-body-bold text-ticket">All films</Text>
-                </View>
-                <View className="rounded-full border border-ink/10 bg-ticket px-3 py-1.5">
-                  <Text className="text-xs text-ink">Unwatched</Text>
-                </View>
-              </HStack>
-
-              {FILMS.length === 0 ? (
-                <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
-                  <Text className="font-display text-xl text-ink">Nothing in the library yet</Text>
-                  <Text className="mt-1 text-xs text-ink-soft">Your first film takes about six minutes to make.</Text>
-                </View>
-              ) : null}
-              <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
-                {FILMS.map((f) => {
-                  return (
-                    <Pressable
-                      key={f.id}
-                      onPress={() => {
-                        setFilmId(f.id)
-                        setPlaying(true)
-                        setStep("player")
-                      }}
-                      className="w-[48%]"
-                      accessibilityRole="button"
-                    >
-                      <View className="overflow-hidden rounded-xl bg-night" style={CARD_SHADOW}>
-                        <Image source={f.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
-                        {!f.watched ? (
-                          <View className="absolute left-1.5 top-1.5 rounded bg-marigold px-1.5 py-0.5">
-                            <Text className="text-[10px] font-body-bold uppercase tracking-[0.5px] text-ink">New</Text>
-                          </View>
-                        ) : null}
-                        <View className="absolute bottom-1.5 right-2 rounded bg-night/85 px-1 py-0.5">
-                          <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
-                        </View>
+          <View className="px-5">
+            <View className="flex-row flex-wrap" style={{ gap: 12, rowGap: 16 }}>
+              {FILMS.map((f) => (
+                <Pressable
+                  key={f.id}
+                  onPress={() => openFilm(f.id)}
+                  style={{ width: "48%" }}
+                  className="active:opacity-85"
+                  accessibilityRole="button"
+                  accessibilityLabel={`${f.title}, ${clock(f.durationSec)}`}
+                >
+                  <View className="overflow-hidden rounded-xl" style={{ backgroundColor: "#10163B" }}>
+                    <Image source={f.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
+                    <LinearGradient
+                      colors={["transparent", "rgba(10,14,36,0.65)"]}
+                      style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 32 }}
+                    />
+                    <Text className="absolute bottom-1.5 right-2 text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                    {!f.watched ? (
+                      <View className="absolute left-1.5 top-1.5 rounded bg-marigold px-1.5 py-0.5">
+                        <Text className="text-[10px] font-body-bold uppercase tracking-[0.5px] text-ink">New</Text>
                       </View>
-                      <Text className="mt-1.5 font-body-bold text-[14px] leading-5 text-ink" numberOfLines={2}>
-                        {f.title} {f.subtitle}
-                      </Text>
-                      <Text className="text-xs text-ink-soft" numberOfLines={1}>
-                        {f.styleLabel} · {f.narrator}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
-            </VStack>
-          </Animated.View>
+                    ) : null}
+                  </View>
+                  <Text className="mt-1.5 font-body-bold text-[14px] leading-5 text-ticket" numberOfLines={2}>
+                    {f.title} {f.subtitle}
+                  </Text>
+                  <Text className="text-xs text-ticket/60" numberOfLines={1}>
+                    {f.styleLabel} · {f.narrator}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         </ScrollView>
       </View>
     )
@@ -120,79 +141,143 @@ export default function WatchFlow() {
   /* SCREEN 2 — Player */
   if (step === "player") {
     return (
-      <View className="flex-1 bg-night">
-        <ScrollView contentContainerClassName="pb-10">
-          <Animated.View entering={FadeInDown.duration(350)}>
-            <View className="relative">
-              <Image source={film.poster} className="aspect-[4/3] w-full" resizeMode="cover" />
-              <LinearGradient colors={["rgba(13,18,60,0.35)", "transparent"]} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 120 }} />
-              <HStack className="absolute left-4 right-4 top-14 justify-between">
-                <Pressable onPress={() => setStep("library")} className="h-11 w-11 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Back">
-                  <ChevronLeft size={18} stroke="#FFF9F0" />
+      <View className="flex-1" style={{ backgroundColor: INK }}>
+        <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
+          <Animated.View entering={FadeIn.duration(250)}>
+            <View className="relative w-full">
+              <Image source={film.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
+              <LinearGradient
+                colors={["rgba(10,14,36,0.7)", "transparent"]}
+                style={{ position: "absolute", left: 0, right: 0, top: 0, height: Math.round(insets.top + 84) }}
+              />
+              <LinearGradient
+                colors={["transparent", "rgba(10,14,36,0.55)"]}
+                style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 96 }}
+              />
+
+              <View style={{ paddingTop: insets.top + 8 }} className="absolute left-4 right-4 flex-row items-center justify-between">
+                <Pressable
+                  onPress={() => (deepId ? router.back() : setStep("library"))}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/35"
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                >
+                  <ChevronLeft size={20} stroke="#FFF9F0" />
                 </Pressable>
-                <Pressable onPress={() => setStep("share")} className="h-11 w-11 items-center justify-center rounded-full bg-night/60 active:bg-night/80" accessibilityLabel="Share">
+                <Pressable
+                  onPress={() => setStep("share")}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/35"
+                  accessibilityRole="button"
+                  accessibilityLabel="Share film"
+                >
                   <Share2 size={17} stroke="#FFF9F0" />
                 </Pressable>
-              </HStack>
+              </View>
+
               <Pressable
                 onPress={() => setPlaying((p) => !p)}
                 className="absolute inset-0 items-center justify-center"
+                accessibilityRole="button"
                 accessibilityLabel={playing ? "Pause" : "Play"}
               >
-                <View className="rounded-full border-2 border-coral/70 bg-marigold p-5" style={{ shadowColor: "#000", shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}>
-                  {playing ? <Pause size={24} stroke="#1B1330" fill="#1B1330" /> : <Play size={24} stroke="#1B1330" fill="#1B1330" />}
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{ width: 68, height: 68, backgroundColor: MARIGOLD, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }}
+                >
+                  {playing ? <Pause size={26} stroke="#1B1330" fill="#1B1330" /> : <Play size={26} stroke="#1B1330" fill="#1B1330" />}
                 </View>
               </Pressable>
+
+              <View className="absolute bottom-0 left-0 right-0 px-4 pb-3">
+                <View className="h-1.5 overflow-hidden rounded-full bg-white/25">
+                  <View className="h-full rounded-full" style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: MARIGOLD }} />
+                </View>
+                <HStack className="mt-1.5 items-center justify-between">
+                  <Text className="text-[11px] font-body-semibold text-ticket/90">{clock(pos)}</Text>
+                  <Text className="text-[11px] text-ticket/70">{clock(film.durationSec)}</Text>
+                </HStack>
+              </View>
             </View>
 
-            <View className="px-5">
-              <View className="mt-4 h-1.5 overflow-hidden rounded-full bg-ticket/15">
-                <View className="h-full rounded-full bg-marigold" style={{ width: "38%" }} />
-              </View>
-              <HStack className="mt-1.5 justify-between">
-                <Text className="text-[11px] text-ticket/50">0:24</Text>
-                <Text className="text-[11px] text-ticket/50">{clock(film.durationSec)}</Text>
+            <View className="px-5 pt-4">
+              <HStack className="items-center justify-between">
+                <HStack space="sm" className="items-center">
+                  <Text className={`${EYEBROW} text-marigold`}>Now playing</Text>
+                  <Text className="text-xs text-ticket/50">{film.created}</Text>
+                </HStack>
+                <Pressable
+                  onPress={() => setPos(0)}
+                  className="min-h-11 flex-row items-center gap-1.5 px-2"
+                  accessibilityRole="button"
+                  accessibilityLabel="Restart film"
+                >
+                  <RotateCcw size={13} stroke={MARIGOLD} />
+                  <Text className="text-xs font-body-semibold text-marigold">Restart</Text>
+                </Pressable>
               </HStack>
 
-              <Text className="mt-4 font-display text-[28px] leading-8 text-ticket">{film.title}</Text>
-              <HStack space="sm" className="mt-1 items-center">
-                <Text className="text-[13px] text-ticket/85">
-                  {film.narrator} · {film.styleLabel}
-                </Text>
-                {subtitles ? (
-                  <View className="rounded-full bg-ticket/10 px-2 py-0.5">
-                    <Text className={`${EYEBROW} text-marigold`}>Subtitles on</Text>
-                  </View>
-                ) : null}
+              <HStack space="sm" className="mt-1 items-baseline">
+                <Text className="font-display text-[30px] leading-[36px] text-ticket">{film.title}</Text>
+              </HStack>
+              <Text className="font-display-italic text-[17px] leading-6 text-ticket/80">{film.subtitle}</Text>
+
+              <HStack space="xs" className="mt-3 flex-wrap">
+                <Chip label={film.styleLabel} />
+                <Chip label={film.narrator} />
+                <Chip label="480P" />
+                <Chip label={film.narrator === "Rio" || film.subtitle.includes("yerin") ? "Español / Türkçe" : "English"} />
               </HStack>
 
-              <HStack space="sm" className="mt-6">
+              <HStack space="sm" className="mt-5">
                 <Pressable
                   onPress={() => setSubtitles((s) => !s)}
-                  className={`min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-2xl ${subtitles ? "bg-ticket/15" : "border border-ticket/20"}`}
+                  className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border ${subtitles ? "border-marigold/60 bg-marigold/15" : "border-white/15 bg-white/5"}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: subtitles }}
                 >
-                  <Text className="text-xs font-body-semibold text-ticket">Subtitles</Text>
+                  <Subtitles size={15} stroke={subtitles ? MARIGOLD : "#FFF9F0"} />
+                  <Text className={`text-[13px] font-body-bold ${subtitles ? "text-marigold" : "text-ticket"}`}>Subtitles</Text>
                 </Pressable>
-                <Pressable className="min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-ticket/20 active:bg-ticket/10">
-                  <Download size={14} stroke="#FFF9F0" />
-                  <Text className="text-xs font-body-semibold text-ticket">Save</Text>
+                <Pressable className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10">
+                  <Download size={15} stroke="#FFF9F0" />
+                  <Text className="text-[13px] font-body-bold text-ticket">Save</Text>
                 </Pressable>
-                <Pressable onPress={() => setStep("share")} className="min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-ticket/20 active:bg-ticket/10">
-                  <Share2 size={14} stroke="#FFF9F0" />
-                  <Text className="text-xs font-body-semibold text-ticket">Share</Text>
+                <Pressable className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10">
+                  <Gauge size={15} stroke="#FFF9F0" />
+                  <Text className="text-[13px] font-body-bold text-ticket">480P</Text>
                 </Pressable>
               </HStack>
 
-              <Pressable
-                onPress={() => {
-                  setPlaying(true)
-                  setStep("player")
-                }}
-                className="mt-6 min-h-11 flex-row items-center justify-center gap-2 rounded-2xl bg-royal active:opacity-90"
-              >
-                <RotateCw size={14} stroke="#FFF9F0" />
-                <Text className="text-sm font-body-bold text-ticket">Watch again from the start</Text>
-              </Pressable>
+              <HStack className="mt-4 items-center justify-center gap-8">
+                <Pressable onPress={() => setPos((p) => Math.max(0, p - 15))} className="h-11 w-11 items-center justify-center" accessibilityRole="button" accessibilityLabel="Back 15 seconds">
+                  <SkipBack size={20} stroke="#FFF9F0" />
+                </Pressable>
+                <Pressable onPress={() => setPos((p) => Math.min(film.durationSec, p + 15))} className="h-11 w-11 items-center justify-center" accessibilityRole="button" accessibilityLabel="Forward 15 seconds">
+                  <SkipForward size={20} stroke="#FFF9F0" />
+                </Pressable>
+              </HStack>
+
+              <View className="mt-2 h-px bg-white/10" />
+
+              <HStack className="mt-4 items-center justify-between">
+                <HStack space="xs" className="items-center">
+                  <View style={{ height: 2, width: 16, backgroundColor: MARIGOLD, opacity: 0.8 }} />
+                  <Text className={`${EYEBROW} text-ticket/60`}>Up next</Text>
+                </HStack>
+              </HStack>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingTop: 12, paddingRight: 4 }}>
+                {upNext.map((f) => (
+                  <Pressable key={f.id} onPress={() => openFilm(f.id)} className="w-40" accessibilityRole="button" accessibilityLabel={`Play ${f.title}`}>
+                    <View className="overflow-hidden rounded-xl" style={{ backgroundColor: "#10163B" }}>
+                      <Image source={f.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
+                      <Text className="absolute bottom-1.5 right-2 text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
+                    </View>
+                    <Text className="mt-1.5 font-body-semibold text-[13px] leading-5 text-ticket" numberOfLines={1}>
+                      {f.title} {f.subtitle}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
           </Animated.View>
         </ScrollView>
@@ -202,32 +287,32 @@ export default function WatchFlow() {
 
   /* SCREEN 3 — Share sheet */
   return (
-    <View className="flex-1 justify-end bg-night/95">
-      <Animated.View entering={FadeIn.duration(250)}>
-        <View className="rounded-t-3xl bg-ticket p-6" style={CARD_SHADOW}>
-          <View className="mx-auto mb-4 h-1 w-10 rounded-full bg-ink/15" />
+    <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(6,9,24,0.94)" }}>
+      <Animated.View entering={FadeInDown.duration(260)}>
+        <View className="rounded-t-3xl px-6 pb-8 pt-3" style={{ backgroundColor: "#10163B" }}>
+          <View className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
           <HStack className="items-center justify-between">
-            <VStack space="xs">
-              <Text className={`${EYEBROW} text-ink-soft`}>Share tonight's film</Text>
-              <Text className="font-display text-xl leading-6 text-ink" numberOfLines={1}>
-                {film.title}
+            <VStack space="xs" className="flex-1 pr-4">
+              <Text className={`${EYEBROW} text-marigold`}>Share tonight's film</Text>
+              <Text className="font-display text-xl leading-6 text-ticket" numberOfLines={2}>
+                {film.title} {film.subtitle}
               </Text>
             </VStack>
-            <Pressable onPress={() => setStep("player")} className="h-11 w-11 items-center justify-center rounded-full bg-ink/5" accessibilityLabel="Close">
-              <X size={16} stroke="#1B1330" />
+            <Pressable onPress={() => setStep("player")} className="h-11 w-11 items-center justify-center rounded-full bg-white/10" accessibilityRole="button" accessibilityLabel="Close">
+              <X size={16} stroke="#FFF9F0" />
             </Pressable>
           </HStack>
           <VStack space="sm" className="mt-5">
             {[
-              { icon: <MessageCircle size={16} stroke="#22319B" />, title: "Send a link", note: "Anyone in the family can watch" },
-              { icon: <Download size={16} stroke="#22319B" />, title: "Save the film", note: "Downloaded to your device" },
-              { icon: <Share2 size={16} stroke="#22319B" />, title: "More options", note: "AirDrop, Messages, Photos" },
+              { icon: <MessageCircle size={16} stroke={MARIGOLD} />, title: "Send a link", note: "Anyone in the family can watch" },
+              { icon: <Download size={16} stroke={MARIGOLD} />, title: "Save the film", note: "Downloaded to your device" },
+              { icon: <Share2 size={16} stroke={MARIGOLD} />, title: "More options", note: "AirDrop, Messages, Photos" },
             ].map((row) => (
-              <Pressable key={row.title} className="min-h-11 flex-row items-center gap-3 rounded-2xl bg-paper p-3 active:bg-paper/70">
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-ticket">{row.icon}</View>
+              <Pressable key={row.title} className="min-h-12 flex-row items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 active:bg-white/10">
+                <View className="h-9 w-9 items-center justify-center rounded-full bg-white/10">{row.icon}</View>
                 <VStack space="xs">
-                  <Text className="text-sm font-body-semibold text-ink">{row.title}</Text>
-                  <Text className="text-[11px] text-ink-soft">{row.note}</Text>
+                  <Text className="text-sm font-body-bold text-ticket">{row.title}</Text>
+                  <Text className="text-[11px] text-ticket/60">{row.note}</Text>
                 </VStack>
               </Pressable>
             ))}

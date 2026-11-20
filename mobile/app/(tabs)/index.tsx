@@ -75,7 +75,7 @@ export default function HomeScreen() {
     <View className="flex-1 bg-paper">
       <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
         <View className="bg-night">
-          <Pressable onPress={() => router.push("/watch")} accessibilityRole="button" accessibilityLabel={`Play ${hero.title} ${hero.subtitle}`}>
+          <Pressable onPress={() => router.push({ pathname: "/watch", params: { id: hero.id } })} accessibilityRole="button" accessibilityLabel={`Play ${hero.title} ${hero.subtitle}`}>
             <View style={{ height: heroImageHeight }} className="relative w-full">
               <Image source={hero.poster} className="h-full w-full" resizeMode="cover" />
               <LinearGradient
@@ -121,7 +121,7 @@ export default function HomeScreen() {
             </Text>
             <HStack space="sm" className="mt-4">
               <Pressable
-                onPress={() => router.push("/watch")}
+                onPress={() => router.push({ pathname: "/watch", params: { id: hero.id } })}
                 className="min-h-12 flex-row items-center gap-2 rounded-full px-6"
                 style={{ backgroundColor: "#FFB627" }}
                 accessibilityRole="button"
@@ -130,7 +130,7 @@ export default function HomeScreen() {
                 <Text className="font-body-bold text-[15px] text-ink">Play film</Text>
               </Pressable>
               <Pressable
-                onPress={() => router.push("/watch")}
+                onPress={() => router.push({ pathname: "/watch", params: { id: hero.id } })}
                 className="min-h-12 flex-row items-center rounded-full border border-ticket/40 px-5 active:bg-white/10"
                 accessibilityRole="button"
               >
@@ -143,7 +143,7 @@ export default function HomeScreen() {
         <View className="relative -mt-6 rounded-t-[28px] bg-paper px-5 pt-5">
           <Animated.View entering={FadeInDown.duration(420)}>
             <VStack space="lg">
-              <Pressable onPress={() => router.push("/watch")} accessibilityRole="button" accessibilityLabel={`Resume ${hero.title}`}>
+              <Pressable onPress={() => router.push({ pathname: "/watch", params: { id: hero.id } })} accessibilityRole="button" accessibilityLabel={`Resume ${hero.title}`}>
                 <View className="flex-row items-center gap-3 rounded-2xl bg-ticket p-2.5" style={CARD_SHADOW}>
                   <Image source={hero.poster} className="rounded-lg" style={{ width: 92, height: 52 }} resizeMode="cover" />
                   <VStack space="xs" className="flex-1">
@@ -245,7 +245,7 @@ export default function HomeScreen() {
                     {shown.map((f) => (
                       <Pressable
                         key={f.id}
-                        onPress={() => router.push("/watch")}
+                        onPress={() => router.push({ pathname: "/watch", params: { id: f.id } })}
                         className="flex-row items-center gap-3 rounded-2xl bg-ticket p-2.5 active:opacity-85"
                         style={CARD_SHADOW}
                         accessibilityRole="button"
@@ -269,7 +269,7 @@ export default function HomeScreen() {
                     {shown.map((f) => (
                       <Pressable
                         key={f.id}
-                        onPress={() => router.push("/watch")}
+                        onPress={() => router.push({ pathname: "/watch", params: { id: f.id } })}
                         style={{ width: (SW - 40 - 12) / 2 }}
                         className="active:opacity-85"
                         accessibilityRole="button"
