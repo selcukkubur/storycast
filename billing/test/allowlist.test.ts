@@ -11,6 +11,13 @@ const APP_ID = /^[a-z0-9-]+\/[a-z0-9./-]+$/;
 
 const sources: Record<string, string> = { "pipeline.ts": pipeline, "director.ts": director, "voices.ts": voices, "fal.ts": fal };
 
+/**
+ * Per-file floor for the extractor, pinned to the counts observed when this test was written
+ * (pipeline 23, director 2, voices 1, fal 1). A refactor may add or drop a call, but a file whose
+ * extraction silently drops to zero — or mostly to zero — must fail instead of passing vacuously.
+ */
+const MIN_EXTRACTIONS: Record<string, number> = { "pipeline.ts": 20, "director.ts": 2, "voices.ts": 1, "fal.ts": 1 };
+
 /** Module-level string constants, so `run(TTS, ...)` can be resolved to the literal it names. */
 function constants(src: string): Map<string, string> {
   const found = new Map<string, string>();
@@ -40,13 +47,17 @@ function calledApps(src: string): string[] {
 describe("fal allowlist contract", () => {
   const called = Object.entries(sources).flatMap(([, src]) => calledApps(src));
 
-  it("extracts app ids from the client sources", () => {
+  it("extracts app ids from every client source", () => {
     // Guards the extractor itself: a refactor to a different call shape must not silently empty this test.
-    expect(called.length).toBeGreaterThanOrEqual(15);
+    for (const [name, src] of Object.entries(sources)) {
+      expect(calledApps(src).length, `${name} yielded too few app ids`).toBeGreaterThanOrEqual(MIN_EXTRACTIONS[name]);
+    }
   });
 
-  it.each(Object.entries(sources))("allowlists every app %s calls", (_name, src) => {
-    const missing = [...new Set(calledApps(src))].filter((app) => !ALLOWED_APPS.has(app));
+  it.each(Object.entries(sources))("allowlists every app %s calls", (name, src) => {
+    const apps = calledApps(src);
+    expect(apps.length).toBeGreaterThanOrEqual(MIN_EXTRACTIONS[name]);
+    const missing = [...new Set(apps)].filter((app) => !ALLOWED_APPS.has(app));
     expect(missing).toEqual([]);
   });
 

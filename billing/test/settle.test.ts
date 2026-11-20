@@ -42,7 +42,7 @@ const settle = (token: string, jobId: string, payload: Record<string, unknown>) 
     body: JSON.stringify(payload),
   });
 
-/** Seed the asset ledger the way the proxied result route would. */
+/** Seed the asset ledger the way the proxied result route would: the default app emits the finished film. */
 const seedAsset = (jobId: string, url: string, app = "fal-ai/ffmpeg-api/merge-audio-video") =>
   db.DB.prepare("INSERT INTO job_assets (job_id, url, app, created) VALUES (?, ?, ?, 0)").bind(jobId, url, app).run();
 
@@ -84,6 +84,28 @@ describe("settle", () => {
 
     const job = await db.DB.prepare("SELECT settled FROM jobs WHERE id = ?").bind(jobId).first<{ settled: number }>();
     expect(job?.settled).toBe(0);
+  });
+
+  it("refuses to settle as done on a recorded clip that is not the film", async () => {
+    const { token, jobId } = await twoMinuteStarter();
+    // A trim clip is recorded proof of work, but a cheap clip must not unlock a refund on a done job.
+    await seedAsset(jobId, "https://fal.media/files/x/clip.mp4", "fal-ai/workflow-utilities/trim-video");
+    const fal = vi.fn(async () => new Response(JSON.stringify({ media: { duration: 30 } }), { status: 200 }));
+    vi.stubGlobal("fetch", fal);
+
+    const res = await settle(token, jobId, { outcome: "done", videoUrl: "https://fal.media/files/x/clip.mp4" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("videoUrl was not produced by this job");
+    expect(fal).not.toHaveBeenCalled();
+
+    const job = await db.DB.prepare("SELECT settled, status, video_url FROM jobs WHERE id = ?")
+      .bind(jobId)
+      .first<{ settled: number; status: string; video_url: string | null }>();
+    expect(job).toMatchObject({ settled: 0, status: "running", video_url: null });
+    const refunds = await db.DB.prepare("SELECT COUNT(*) AS n FROM ledger WHERE ref = ?")
+      .bind(`refund:${jobId}`)
+      .first<{ n: number }>();
+    expect(refunds?.n).toBe(0);
   });
 
   it("records the video a result route returns and settles it as done", async () => {

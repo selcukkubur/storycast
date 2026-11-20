@@ -29,7 +29,8 @@ const period = () => new Date().toISOString().slice(0, 7);
 
 /** Apps whose output is a finished film: once one exists the job may not be refunded as an error. */
 const DELIVERABLE_APPS = new Set(["fal-ai/workflow-utilities/auto-subtitle", "fal-ai/ffmpeg-api/merge-audio-video"]);
-const JOB_CALL_CAP = 200;
+/** Flat ceiling for one job: a legitimate ~5-minute family film needs ~220 fal calls, so 400 leaves headroom. */
+const JOB_CALL_CAP = 400;
 /** A running job older than this can no longer block the pool (crashed client, lost device). */
 const RUNNING_JOB_TTL = 6 * 3600;
 
@@ -213,10 +214,13 @@ export function createApp(deps: Deps = {}) {
           } else if (outcome === "done") {
             videoUrl = falUrl(b.videoUrl);
             if (!videoUrl) throw new HttpError(400, "videoUrl must be a fal media URL");
-            const produced = await env.DB.prepare("SELECT url FROM job_assets WHERE job_id = ? AND url = ?")
+            // Only an app whose output is the finished film may settle a job as done: a recorded trim,
+            // clip or still is proof of work, not proof of delivery, and must not unlock a refund.
+            const produced = await env.DB.prepare("SELECT app FROM job_assets WHERE job_id = ? AND url = ?")
               .bind(job.id, videoUrl)
-              .first<{ url: string }>();
-            if (!produced) throw new HttpError(400, "videoUrl was not produced by this job");
+              .first<{ app: string }>();
+            if (!produced || !DELIVERABLE_APPS.has(produced.app))
+              throw new HttpError(400, "videoUrl was not produced by this job");
             const { duration } = await falMetadata(env, videoUrl);
             refund = settleRefund(job.minutes, job.resolution, duration);
           } else {
@@ -312,9 +316,11 @@ export function createApp(deps: Deps = {}) {
           const credits = PRODUCTS[sub.productId]?.topup;
           if (!credits) throw new HttpError(400, "not a top-up product");
           if (sub.revoked) throw new HttpError(402, "purchase was revoked");
-          // Consumables are wallet-local: they land in the purchaser's own wallet, never the family pool.
-          const added = await record(env, account.id, "topup", credits, `topup:${sub.originalTransactionId}`);
-          return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, account.id) });
+          // A top-up is spent from the pool the purchaser draws on, so it lands there: a linked member's
+          // top-up credits the owner's pool, an independent account's credits its own.
+          const { walletPool } = await effective(env, account);
+          const added = await record(env, walletPool, "topup", credits, `topup:${sub.originalTransactionId}`);
+          return json({ creditsAdded: added ? credits : 0, creditsLeft: await balance(env, walletPool) });
         }
 
         if (req.method === "POST" && path === "/apple/notifications") {

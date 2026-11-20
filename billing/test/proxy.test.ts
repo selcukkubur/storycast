@@ -124,21 +124,30 @@ describe("fal proxy", () => {
 
   it("caps the calls a single job may make", async () => {
     const { token, jobId } = await setup();
-    await db.DB.prepare(
-      "INSERT INTO job_calls (request_id, job_id, app, created) SELECT 'rid-' || value, ?, 'fal-ai/ffmpeg-api/metadata', 0 FROM (WITH RECURSIVE c(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM c WHERE value < 200) SELECT value FROM c)",
-    )
-      .bind(jobId)
-      .run();
+    const seedCalls = (n: number) =>
+      db.DB.prepare(
+        "INSERT INTO job_calls (request_id, job_id, app, created) SELECT 'rid-' || value, ?, 'fal-ai/ffmpeg-api/metadata', 0 FROM (WITH RECURSIVE c(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM c WHERE value < ?) SELECT value FROM c)",
+      )
+        .bind(jobId, n)
+        .run();
+    const call = () =>
+      SELF.fetch(`https://billing.local/jobs/${jobId}/calls`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ app: "fal-ai/ffmpeg-api/metadata", input: {} }),
+      });
     const fal = vi.fn(async () => new Response(JSON.stringify({ request_id: "req-over" }), { status: 200 }));
     vi.stubGlobal("fetch", fal);
 
-    const res = await SELF.fetch(`https://billing.local/jobs/${jobId}/calls`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ app: "fal-ai/ffmpeg-api/metadata", input: {} }),
-    });
+    // 399 recorded calls still leave room for one more.
+    await seedCalls(399);
+    expect((await call()).status).toBe(200);
+    expect(fal).toHaveBeenCalledTimes(1);
+
+    // That call is the 400th; the next one is over the flat cap.
+    const res = await call();
     expect(res.status).toBe(429);
-    expect(fal).not.toHaveBeenCalled();
+    expect(fal).toHaveBeenCalledTimes(1);
   });
 
   it("uploads a file through the fal storage handshake", async () => {

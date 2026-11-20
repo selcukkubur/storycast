@@ -86,7 +86,7 @@ describe("family pool", () => {
     expect(wallet.expiresAt).toBe(ownerSub.expiresAt);
   });
 
-  it("credits a member's top-up to the member's own wallet", async () => {
+  it("credits a member's top-up to the pool the member spends from", async () => {
     const owner = await register("owner-dev");
     await post("/apple/subscription", owner.token, { transactionId: "tx-owner" });
     const member = await register("member-dev");
@@ -103,15 +103,24 @@ describe("family pool", () => {
     expect(res.status).toBe(200);
     const b = (await res.json()) as { creditsAdded: number; creditsLeft: number };
     expect(b.creditsAdded).toBe(3);
-    // Consumables are wallet-local: the member's trial credit plus the top-up, not the family pool.
-    expect(b.creditsLeft).toBe(4);
+    // A top-up credits the pool the member spends from: the owner's pool, not the member's own wallet.
+    expect(b.creditsLeft).toBe(9);
 
-    const own = await db.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS b FROM ledger WHERE pool = ?")
+    const sharedPool = await db.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS b FROM ledger WHERE pool = ?")
+      .bind(owner.account)
+      .first<{ b: number }>();
+    expect(sharedPool?.b).toBe(9);
+    const ownWallet = await db.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS b FROM ledger WHERE pool = ?")
       .bind(member.account)
       .first<{ b: number }>();
-    expect(own?.b).toBe(4);
+    // The member's own wallet keeps only its untouched registration grant.
+    expect(ownWallet?.b).toBe(1);
+
+    // Both wallets read the shared pool, so the owner and the member see the bought credits.
     const ownerWallet = (await (await get("/wallet", owner.token)).json()) as { credits: number };
-    expect(ownerWallet.credits).toBe(6);
+    expect(ownerWallet.credits).toBe(9);
+    const memberWallet = (await (await get("/wallet", member.token)).json()) as { credits: number };
+    expect(memberWallet.credits).toBe(9);
   });
 
   it("debits the shared pool from a member's film", async () => {
