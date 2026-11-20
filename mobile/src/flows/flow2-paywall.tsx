@@ -77,7 +77,7 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
                   Choose your <Text className="font-display-italic text-marigold">seat.</Text>
                 </Text>
               </VStack>
-              <Pressable onPress={onClose} className="h-10 w-10 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20" accessibilityLabel="Close">
+              <Pressable onPress={onClose} className="h-11 w-11 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20" accessibilityLabel="Close">
                 <X size={18} stroke="#FFF9F0" />
               </Pressable>
             </HStack>
@@ -264,7 +264,7 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
           <HStack className="justify-between">
             <Pressable
               onPress={() => (onClose ? onClose() : router.back())}
-              className="h-10 w-10 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20"
+              className="h-11 w-11 items-center justify-center rounded-full bg-ticket/10 active:bg-ticket/20"
               accessibilityLabel="Back"
             >
               <ChevronLeft size={18} stroke="#FFF9F0" />
