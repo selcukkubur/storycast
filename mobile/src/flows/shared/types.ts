@@ -26,6 +26,8 @@ export type Film = {
   category: FilmCategory
   poster: ImageSourcePropType
   video: string
+  topic: string
+  lang: string
 }
 
 export type JobStage =

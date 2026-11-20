@@ -10,6 +10,7 @@ import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { FILMS } from "@/src/flows/shared/mock-data"
+import { languageOf } from "@/src/flows/shared/languages"
 
 type Step = "library" | "player" | "share"
 
@@ -180,8 +181,27 @@ export default function WatchFlow() {
                 <Chip label={film.narrator} />
                 <Chip label={clock(film.durationSec)} />
                 <Chip label="480P" />
-                <Chip label={film.narrator === "Rio" || film.subtitle.includes("yerin") ? "Español / Türkçe" : "English"} />
+                <Chip label={languageOf(film.lang).native} />
               </HStack>
+
+              <View className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <Text className={`${EYEBROW} text-ticket/60`}>About this film</Text>
+                <Text className="mt-2 text-[14px] leading-[22px] text-ticket/85">{film.topic}</Text>
+                <View className="mt-3 h-px bg-white/10" />
+                {[
+                  { label: "Language", value: `${languageOf(film.lang).native} · ${languageOf(film.lang).name}` },
+                  { label: "Look", value: film.styleLabel },
+                  { label: "Narrator", value: film.narrator },
+                  { label: "Length", value: `${clock(film.durationSec)} min` },
+                ].map((row, i) => (
+                  <View key={row.label} className={i > 0 ? "mt-2.5" : "mt-2.5"}>
+                    <HStack className="justify-between">
+                      <Text className="text-[13px] text-ticket/55">{row.label}</Text>
+                      <Text className="text-[13px] font-body-semibold text-ticket/90">{row.value}</Text>
+                    </HStack>
+                  </View>
+                ))}
+              </View>
 
               <HStack space="sm" className="mt-5">
                 <Pressable
