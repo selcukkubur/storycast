@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "vars": { "APPLE_ENVIRONMENT": "sandbox" },
+  "triggers": { "crons": ["17 3 * * *"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "storycast-billing", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
