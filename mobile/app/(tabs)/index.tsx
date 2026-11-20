@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown } from "react-native-reanimated"
 import { router } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { ChevronRight, LayoutGrid, Play, Sparkles, Ticket } from "lucide-react-native"
+import { ChevronRight, Grid2x2, Grid3x3, Play, Sparkles, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -54,7 +54,7 @@ function SectionHeader({ title, count, children }: { title: string; count?: numb
 export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const [filter, setFilter] = useState<"all" | FilmCategory>("all")
-  const [dense, setDense] = useState(false)
+  const [compact, setCompact] = useState(false)
 
   const hero = FILMS.find((f) => !f.watched) ?? FILMS[0]
   const heroNarrator = NARRATORS.find((n) => n.id === hero.narratorId)
@@ -63,6 +63,7 @@ export default function HomeScreen() {
   const countOf = (c: FilmCategory) => FILMS.filter((f) => f.category === c).length
 
   const heroHeight = Math.round(SW * 1.12)
+  const itemWidth = compact ? ("31.3%" as const) : ("48%" as const)
 
   return (
     <View className="flex-1 bg-paper">
@@ -161,14 +162,14 @@ export default function HomeScreen() {
 
               <VStack space="sm">
                 <SectionHeader title="Browse by world" />
-                <View className="flex-row flex-wrap justify-between" style={{ rowGap: 12 }}>
+                <View className="flex-row flex-wrap" style={{ gap: 12 }}>
                   {TILES.map((t) => {
                     const selected = filter === t.key
                     return (
                       <Pressable
                         key={t.key}
                         onPress={() => setFilter(selected ? "all" : t.key)}
-                        style={{ width: "48.5%" }}
+                        style={{ width: (SW - 40 - 12) / 2 }}
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
                       >
@@ -195,7 +196,10 @@ export default function HomeScreen() {
                     <Pressable key={`fresh-${f.id}`} onPress={() => router.push("/watch")} className="w-40" accessibilityRole="button">
                       <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
                         <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                        <Text className="absolute left-2 top-0 font-display text-[40px] leading-[46px] text-ticket/90" style={{ textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 8 }}>
+                        <Text
+                          className="absolute left-2 top-0 font-display text-[40px] leading-[46px] text-ticket/90"
+                          style={{ textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 8 }}
+                        >
                           {i + 1}
                         </Text>
                         <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
@@ -212,33 +216,51 @@ export default function HomeScreen() {
 
               <VStack space="sm">
                 <SectionHeader title="Family library" count={shown.length}>
-                  <Pressable
-                    onPress={() => setDense((d) => !d)}
-                    className="h-11 min-w-11 flex-row items-center justify-center gap-1.5 rounded-full border border-ink/15 bg-ticket px-3 active:bg-paper"
-                    accessibilityRole="button"
-                    accessibilityLabel={dense ? "Show bigger posters" : "Show more films per row"}
-                  >
-                    <LayoutGrid size={14} stroke="#22319B" />
-                    <Text className="text-xs font-body-bold text-ink">{dense ? "2-up" : "3-up"}</Text>
-                  </Pressable>
+                  <View className="flex-row rounded-full bg-ink/5 p-1">
+                    {[
+                      { compact: false, Icon: Grid2x2, label: "Comfort grid, two posters per row" },
+                      { compact: true, Icon: Grid3x3, label: "Compact grid, three posters per row" },
+                    ].map((o) => {
+                      const active = compact === o.compact
+                      return (
+                        <Pressable
+                          key={String(o.compact)}
+                          onPress={() => setCompact(o.compact)}
+                          hitSlop={4}
+                          className={`h-9 w-12 items-center justify-center rounded-full ${active ? "bg-ticket" : ""}`}
+                          style={active ? CARD_SHADOW : undefined}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          accessibilityLabel={o.label}
+                        >
+                          <o.Icon size={16} stroke={active ? "#22319B" : "#5A4F66"} />
+                        </Pressable>
+                      )
+                    })}
+                  </View>
                 </SectionHeader>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {FILTERS.map((f) => {
-                    const active = filter === f.key
-                    return (
-                      <Pressable
-                        key={f.key}
-                        onPress={() => setFilter(f.key)}
-                        className={`min-h-11 justify-center rounded-full px-4 ${active ? "bg-royal" : "border border-ink/15 bg-ticket"}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text className={`text-sm ${active ? "font-body-bold text-ticket" : "text-ink"}`}>{f.label}</Text>
-                      </Pressable>
-                    )
-                  })}
-                </ScrollView>
+                <View className="rounded-full bg-ticket p-1" style={CARD_SHADOW}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
+                    {FILTERS.map((f) => {
+                      const active = filter === f.key
+                      const n = f.key === "all" ? FILMS.length : countOf(f.key)
+                      return (
+                        <Pressable
+                          key={f.key}
+                          onPress={() => setFilter(f.key)}
+                          className={`min-h-10 justify-center rounded-full px-4 ${active ? "bg-ink" : ""}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                        >
+                          <Text className={`text-[13px] ${active ? "font-body-bold text-ticket" : "font-body-semibold text-ink-soft"}`}>
+                            {f.label} · {n}
+                          </Text>
+                        </Pressable>
+                      )
+                    })}
+                  </ScrollView>
+                </View>
 
                 {shown.length === 0 ? (
                   <View className="items-center rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
@@ -246,32 +268,41 @@ export default function HomeScreen() {
                     <Text className="mt-1 text-center text-[13px] leading-5 text-ink-soft">Make a film in this world and it will appear here.</Text>
                   </View>
                 ) : (
-                  <View className="flex-row flex-wrap justify-between" style={{ rowGap: 16 }}>
+                  <View className="flex-row flex-wrap" style={{ gap: 12, rowGap: 18 }}>
                     {shown.map((f) => {
                       const n = NARRATORS.find((x) => x.id === f.narratorId)
                       return (
                         <Pressable
                           key={f.id}
                           onPress={() => router.push("/watch")}
-                          style={{ width: dense ? "31.5%" : "48%" }}
+                          style={{ width: itemWidth }}
+                          className="active:opacity-85"
                           accessibilityRole="button"
                           accessibilityLabel={`${f.title}, ${clock(f.durationSec)}`}
                         >
-                          <View className="overflow-hidden rounded-2xl bg-night" style={CARD_SHADOW}>
-                            <Image source={f.poster} className="aspect-[4/5] w-full" resizeMode="cover" />
-                            <View className="absolute bottom-2 right-2 rounded-md bg-night/85 px-1.5 py-0.5">
+                          <View className="overflow-hidden rounded-xl bg-night" style={CARD_SHADOW}>
+                            <Image
+                              source={f.poster}
+                              className="w-full"
+                              style={{ aspectRatio: compact ? 2 / 3 : 3 / 4 }}
+                              resizeMode="cover"
+                            />
+                            <View className="absolute bottom-1.5 right-1.5 rounded bg-night/85 px-1 py-0.5">
                               <Text className="text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                             </View>
-                            {!f.watched ? (
-                              <View className="absolute left-2 top-2 -rotate-2 rounded-md bg-coral px-1.5 py-0.5">
+                            {!f.watched && !compact ? (
+                              <View className="absolute left-1.5 top-1.5 -rotate-2 rounded bg-coral px-1.5 py-0.5">
                                 <Text className={`${EYEBROW} text-ticket`}>New</Text>
                               </View>
                             ) : null}
                           </View>
-                          <Text className={`mt-2 font-body-semibold text-ink ${dense ? "text-xs leading-4" : "text-[13px] leading-5"}`} numberOfLines={2}>
+                          <Text
+                            className={`mt-2 text-ink ${compact ? "font-body-semibold text-xs leading-4" : "font-body-bold text-[14px] leading-5"}`}
+                            numberOfLines={compact ? 1 : 2}
+                          >
                             {f.title}
                           </Text>
-                          {!dense ? (
+                          {!compact ? (
                             <Text className="text-xs text-ink-soft" numberOfLines={1}>
                               {n?.name} · {f.created}
                             </Text>
