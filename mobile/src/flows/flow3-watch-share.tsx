@@ -11,7 +11,7 @@ import { FILMS, NARRATORS } from "@/src/flows/shared/mock-data"
 
 type Step = "library" | "player" | "share"
 
-const EYEBROW = "font-body-semibold text-[10px] uppercase tracking-[2.5px]"
+const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
 const CARD_SHADOW = {
   shadowColor: "#1B1330",

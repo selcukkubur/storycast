@@ -15,7 +15,7 @@ import { STAGE_LABELS, STAGE_ORDER, creditsFor, type Resolution } from "@/src/fl
 
 type Step = "compose" | "gate" | "progress" | "result"
 
-const EYEBROW = "font-body-semibold text-[10px] uppercase tracking-[2.5px]"
+const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
 const CARD_SHADOW = {
   shadowColor: "#1B1330",
@@ -124,7 +124,7 @@ export default function MakeAFilmFlow() {
             <Text className="mt-2 font-display text-[42px] leading-[48px] text-ticket">
               Make a <Text className="font-display-italic text-marigold">film.</Text>
             </Text>
-            <Text className="mt-2 max-w-[78%] text-sm leading-5 text-ticket/70">
+            <Text className="mt-2 max-w-[78%] text-[15px] leading-6 text-ticket/85">
               {narrator.name} tells tonight's story in {narrator.look.toLowerCase()}.
             </Text>
 
@@ -156,9 +156,9 @@ export default function MakeAFilmFlow() {
                     <Pressable
                       key={chip}
                       onPress={() => setTopic(chip)}
-                      className="min-h-11 justify-center rounded-full border border-ink/10 bg-paper px-3 active:bg-ticket"
+                      className="min-h-11 justify-center rounded-full border border-ink/20 bg-paper px-3.5 active:bg-ticket"
                     >
-                      <Text className="text-xs text-ink">{chip}</Text>
+                      <Text className="text-sm text-ink">{chip}</Text>
                     </Pressable>
                   ))}
                 </HStack>
@@ -167,7 +167,7 @@ export default function MakeAFilmFlow() {
               <VStack space="sm">
                 <HStack className="items-center justify-between">
                   <Eyebrow tone="soft">The cast</Eyebrow>
-                  <Text className="text-[11px] text-ink-soft">50 narrators</Text>
+                  <Text className="text-xs text-ink-soft">50 narrators</Text>
                 </HStack>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <HStack space="sm">
@@ -196,7 +196,7 @@ export default function MakeAFilmFlow() {
                             ) : null}
                           </View>
                           <Text className="mt-2 font-body-semibold text-sm text-ink">{n.name}</Text>
-                          <Text className="text-[11px] text-ink-soft" numberOfLines={1}>
+                          <Text className="text-xs text-ink-soft" numberOfLines={1}>
                             {n.look}
                           </Text>
                         </Pressable>
@@ -210,12 +210,12 @@ export default function MakeAFilmFlow() {
                     >
                       <View className="h-[122px] items-center justify-center rounded-[22px] border-2 border-dashed border-ink/20 bg-ticket/60">
                         <Plus size={22} stroke="#6F6480" />
-                        <Text className="mt-1 text-[11px] text-ink-soft">New narrator</Text>
+                        <Text className="mt-1 text-xs text-ink-soft">New narrator</Text>
                       </View>
                     </Pressable>
                   </HStack>
                 </ScrollView>
-                <Text className="text-xs leading-4 text-ink-soft">
+                <Text className="text-[13px] leading-5 text-ink-soft">
                   {narrator.personality} · voice: {narrator.voice}
                 </Text>
               </VStack>
@@ -227,9 +227,9 @@ export default function MakeAFilmFlow() {
                     <Pressable
                       key={l}
                       onPress={() => setLook(l)}
-                      className={`min-h-11 justify-center rounded-full px-3.5 ${l === look ? "bg-royal" : "border border-ink/10 bg-ticket"}`}
+                      className={`min-h-11 justify-center rounded-full px-4 ${l === look ? "bg-royal" : "border border-ink/20 bg-ticket"}`}
                     >
-                      <Text className={`text-xs ${l === look ? "font-body-semibold text-ticket" : "text-ink"}`}>{l}</Text>
+                      <Text className={`text-sm ${l === look ? "font-body-semibold text-ticket" : "text-ink"}`}>{l}</Text>
                     </Pressable>
                   ))}
                 </HStack>
@@ -238,8 +238,8 @@ export default function MakeAFilmFlow() {
               <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
                 <Eyebrow tone="soft">Show settings</Eyebrow>
                 <HStack className="mt-3 justify-between">
-                  <Text className="text-sm font-body-semibold text-ink">Length</Text>
-                  <Text className="text-[11px] text-ink-soft">up to {WALLET.maxMinutes} min on your plan</Text>
+                  <Text className="text-[15px] font-body-bold text-ink">Length</Text>
+                  <Text className="text-xs text-ink-soft">up to {WALLET.maxMinutes} min on your plan</Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {[1, 2, 3, 4, 5].map((m) => {
@@ -252,15 +252,15 @@ export default function MakeAFilmFlow() {
                         disabled={disabled}
                         className={`min-h-11 flex-1 items-center justify-center rounded-xl ${active ? "bg-marigold" : "bg-paper"} ${disabled ? "opacity-30" : ""}`}
                       >
-                        <Text className={`font-body-bold text-sm ${active ? "text-ink" : "text-ink-soft"}`}>{m}</Text>
+                        <Text className={`font-body-bold text-base ${active ? "text-ink" : "text-ink-soft"}`}>{m}</Text>
                       </Pressable>
                     )
                   })}
                 </HStack>
                 <View className="my-3 h-px bg-ink/10" />
                 <HStack className="justify-between">
-                  <Text className="text-sm font-body-semibold text-ink">Picture</Text>
-                  <Text className="text-[11px] text-ink-soft">sharper costs double</Text>
+                  <Text className="text-[15px] font-body-bold text-ink">Picture</Text>
+                  <Text className="text-xs text-ink-soft">sharper costs double</Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {(["480P", "768P"] as Resolution[]).map((r) => {
@@ -271,7 +271,7 @@ export default function MakeAFilmFlow() {
                         onPress={() => setResolution(r)}
                         className={`min-h-11 flex-1 items-center justify-center rounded-xl ${active ? "bg-marigold" : "bg-paper"}`}
                       >
-                        <Text className={`font-body-bold text-xs ${active ? "text-ink" : "text-ink-soft"}`}>
+                        <Text className={`font-body-bold text-[13px] ${active ? "text-ink" : "text-ink-soft"}`}>
                           {r === "480P" ? "Standard" : "Sharper"}
                         </Text>
                       </Pressable>
@@ -287,7 +287,7 @@ export default function MakeAFilmFlow() {
                     <Text className="mt-2 font-display text-xl leading-6 text-ticket">
                       {minutes} min · {resolution.toLowerCase()} · {narrator.name}
                     </Text>
-                    <Text className="mt-1.5 text-xs leading-4 text-ticket/65">
+                    <Text className="mt-1.5 text-[13px] leading-5 text-ticket/85">
                       {canAfford
                         ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
                         : minutes > WALLET.maxMinutes
@@ -358,7 +358,7 @@ export default function MakeAFilmFlow() {
               <Text className="mt-2 text-sm leading-5 text-ink-soft">
                 To start tonight's show, what is <Text className="font-body-bold text-ink">8 × 4</Text>?
               </Text>
-              <View className="mt-4 rounded-2xl border border-ink/10 bg-paper px-4">
+              <View className="mt-4 rounded-2xl border border-ink/25 bg-paper px-4">
                 <InputField
                   value={gateAnswer}
                   onChangeText={setGateAnswer}

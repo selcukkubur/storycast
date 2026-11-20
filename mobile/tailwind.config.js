@@ -11,7 +11,7 @@ module.exports = {
         paper: "#FBEDE2",
         ticket: "#FFF9F0",
         ink: "#1B1330",
-        "ink-soft": "#6F6480",
+        "ink-soft": "#5A4F66",
         mint: "#2E7D6B",
       },
       fontFamily: {
