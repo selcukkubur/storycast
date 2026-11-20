@@ -1,4 +1,4 @@
-import { authenticate, createAccount, planOf, pool } from "./accounts";
+import { authenticate, createAccount, effective, pool } from "./accounts";
 import { PRODUCTS, serverApiVerifier, type AppleVerifier } from "./apple";
 import { PLANS, canStart, settleRefund, type Plan, type Resolution } from "./credits";
 import { HttpError, falUrl, json, num, now, randomId, str } from "./http";
@@ -53,10 +53,10 @@ export function createApp(deps: Deps = {}) {
 
         if (req.method === "GET" && path === "/wallet") {
           const account = await authenticate(env, req);
-          const plan = planOf(account);
+          const { plan, walletPool } = await effective(env, account);
           return json({
             plan,
-            credits: await balance(env, pool(account)),
+            credits: await balance(env, walletPool),
             maxMinutes: PLANS[plan].maxMinutes,
             familyOf: account.family_of,
             expiresAt: account.expires_at,
@@ -71,8 +71,7 @@ export function createApp(deps: Deps = {}) {
           if (minutes < 1 || minutes > 10) throw new HttpError(400, "minutes out of range");
           if (resolution !== "480P" && resolution !== "768P") throw new HttpError(400, "unknown resolution");
 
-          const plan = planOf(account);
-          const walletPool = pool(account);
+          const { plan, walletPool } = await effective(env, account);
           const credits = await balance(env, walletPool);
           const check = canStart(plan, credits, minutes, resolution as Resolution);
           if (!check.ok) throw new HttpError(check.reason === "cap" ? 422 : 402, check.reason);
@@ -182,20 +181,26 @@ export function createApp(deps: Deps = {}) {
           if (!PRODUCTS[sub.productId]?.plan) throw new HttpError(400, "not a subscription product");
           const active = !sub.revoked && sub.expiresAt > now();
 
-          // A receipt may only be claimed by the account it was issued for.
-          // Task 9 (Family Sharing) replaces the apple_token branch with a family link:
-          // a matching token owned by another account becomes `family_of` instead of a 409.
+          // A receipt may only be claimed by the account it was issued for, except under Family Sharing:
+          // a member presenting the subscriber's receipt is linked as `family_of` instead of getting a 409.
           if (sub.appAccountToken) {
-            const holder = await env.DB.prepare("SELECT id FROM accounts WHERE apple_token = ?")
-              .bind(sub.appAccountToken)
-              .first<{ id: string }>();
-            if (holder && holder.id !== account.id) throw new HttpError(409, "receipt is linked to another account");
+            const owner = await env.DB.prepare("SELECT id, plan, expires_at FROM accounts WHERE apple_token = ? AND id != ?")
+              .bind(sub.appAccountToken, account.id)
+              .first<{ id: string; plan: Plan; expires_at: number }>();
+            if (owner && active) {
+              await env.DB.prepare("UPDATE accounts SET family_of = ? WHERE id = ?").bind(owner.id, account.id).run();
+              await grantMonth(env, owner.id, owner.plan === "trial" ? sub.plan : owner.plan);
+              return json({ plan: owner.plan === "trial" ? sub.plan : owner.plan, credits: await balance(env, owner.id), expiresAt: owner.expires_at });
+            }
+            if (owner) throw new HttpError(409, "receipt is linked to another account");
           }
           if (sub.originalTransactionId) {
-            const owner = await env.DB.prepare("SELECT id FROM accounts WHERE orig_txn = ? AND id != ?")
+            const holder = await env.DB.prepare("SELECT id, apple_token FROM accounts WHERE orig_txn = ? AND id != ?")
               .bind(sub.originalTransactionId, account.id)
-              .first<{ id: string }>();
-            if (owner) throw new HttpError(409, "receipt is linked to another account");
+              .first<{ id: string; apple_token: string | null }>();
+            // The same subscription presented under the same appAccountToken is a family member, not a replay.
+            const shared = !!holder && !!sub.appAccountToken && holder.apple_token === sub.appAccountToken;
+            if (holder && !shared) throw new HttpError(409, "receipt is linked to another account");
           }
 
           try {
