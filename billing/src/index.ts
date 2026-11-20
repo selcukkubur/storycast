@@ -2,8 +2,10 @@ import { authenticate, createAccount, effective, idfvHashOf, planOf, pool } from
 import { PRODUCTS, serverApiVerifier, type AppleVerifier } from "./apple";
 import { PLANS, canStart, settleRefund, type Plan, type Resolution } from "./credits";
 import { HttpError, falUrl, json, num, now, randomId, str } from "./http";
+import { grantMonth } from "./grants";
 import { balance, record } from "./ledger";
 import { ALLOWED_APPS, falMetadata, falResult, falStatus, falSubmit, falUpload } from "./proxy";
+import { reconcile } from "./reconcile";
 
 export interface Env {
   DB: D1Database;
@@ -24,8 +26,6 @@ const body = async (req: Request) => {
     throw new HttpError(400, "invalid json");
   }
 };
-
-const period = () => new Date().toISOString().slice(0, 7);
 
 /** Apps whose output is a finished film: once one exists the job may not be refunded as an error. */
 const DELIVERABLE_APPS = new Set(["fal-ai/workflow-utilities/auto-subtitle", "fal-ai/ffmpeg-api/merge-audio-video"]);
@@ -57,12 +57,6 @@ function producedVideos(body: unknown): string[] {
     }
   }
   return found;
-}
-
-async function grantMonth(env: Env, walletPool: string, plan: Plan) {
-  const bal = await balance(env, walletPool);
-  const grant = Math.min(PLANS[plan].credits, Math.max(0, PLANS[plan].rolloverCap - bal));
-  if (grant > 0) await record(env, walletPool, "grant", grant, `grant:${period()}:${walletPool}`);
 }
 
 export type Deps = { verifier?: AppleVerifier };
@@ -380,4 +374,12 @@ export function createApp(deps: Deps = {}) {
   };
 }
 
-export default createApp();
+const app = createApp();
+
+export default {
+  fetch: (req: Request, env: Env) => app.fetch(req, env),
+  async scheduled(_event: ScheduledController, env: Env) {
+    const summary = await reconcile(env, serverApiVerifier(env));
+    console.log(JSON.stringify({ reconcile: summary }));
+  },
+};

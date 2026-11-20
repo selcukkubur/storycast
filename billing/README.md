@@ -68,3 +68,14 @@ Point the App Store Server Notifications URL at `https://<worker-host>/apple/not
 ## Launch gate
 
 Subscriptions go live only when COGS <= $2.75 per 480P minute (spec section 4).
+
+## Reconciliation (cron)
+
+The worker runs a nightly repair pass (`triggers.crons` in `wrangler.jsonc`, 03:17 UTC). It re-reads every account with a stored `orig_txn` from the App Store Server API and repairs what webhooks missed: active subscriptions get plan/expiry refreshed and the month's grant re-applied (idempotent through the ledger ref), lapsed or revoked ones drop to trial terms. Members without their own receipt are untouched (they follow the owner's subscription).
+
+Trigger it locally:
+
+```bash
+npx wrangler dev --test-scheduled
+curl "http://127.0.0.1:8787/__scheduled?cron=17+3+*+*+*"
+```
