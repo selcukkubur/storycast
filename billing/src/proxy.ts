@@ -52,8 +52,10 @@ export async function falMetadata(env: Env, mediaUrl: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ media_url: mediaUrl }),
   });
-  const body = JSON.parse(text) as { media: { duration: number } };
-  return { duration: Number(body.media?.duration ?? 0) };
+  const body = JSON.parse(text) as { media?: { duration?: unknown } };
+  const duration = Number(body.media?.duration);
+  if (!Number.isFinite(duration) || duration <= 0) throw new HttpError(502, "metadata returned no duration");
+  return { duration };
 }
 
 export async function falUpload(env: Env, file: File) {
