@@ -4,20 +4,8 @@ import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated"
 import { router, useLocalSearchParams } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import {
-  ChevronLeft,
-  Download,
-  Gauge,
-  MessageCircle,
-  Pause,
-  Play,
-  RotateCcw,
-  Share2,
-  SkipBack,
-  SkipForward,
-  Subtitles,
-  X,
-} from "lucide-react-native"
+import { useVideoPlayer, VideoView } from "expo-video"
+import { ChevronLeft, Download, MessageCircle, RotateCcw, Share2, X } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -41,7 +29,7 @@ function Chip({ label }: { label: string }) {
 /* ================================================
    FLOW: Watch & Share
    SCREENS: Library ↔ Player → Share
-   PLATFORM: React Native (Expo + NativeWind + local Gluestack-style components)
+   PLATFORM: React Native (Expo + NativeWind + expo-video)
    ENTRY:  Home poster deep-link (?id=) · notification · result screen
    EXIT:   ✅ watched/shared · ↩ back
    ================================================ */
@@ -52,31 +40,27 @@ export default function WatchFlow() {
 
   const [step, setStep] = useState<Step>(deepId ? "player" : "library")
   const [filmId, setFilmId] = useState(deepId ?? FILMS[0].id)
-  const [playing, setPlaying] = useState(true)
-  const [subtitles, setSubtitles] = useState(true)
-  const [pos, setPos] = useState(24)
 
   const film = useMemo(() => FILMS.find((f) => f.id === filmId) ?? FILMS[0], [filmId])
   const upNext = useMemo(() => FILMS.filter((f) => f.id !== film.id).slice(0, 6), [film.id])
-  const progress = Math.min(1, pos / film.durationSec)
+
+  const player = useVideoPlayer(film.video)
 
   useEffect(() => {
-    if (step !== "player" || !playing) return
-    const t = setInterval(() => setPos((p) => (p + 1 >= film.durationSec ? film.durationSec : p + 1)), 1000)
-    return () => clearInterval(t)
-  }, [step, playing, film.durationSec])
-
-  useEffect(() => {
-    setPos(24)
-    setPlaying(true)
+    player.replace(film.video)
   }, [film.id])
+
+  useEffect(() => {
+    if (step === "player") player.play()
+    else player.pause()
+  }, [step, film.id])
 
   const openFilm = (id: string) => {
     setFilmId(id)
     setStep("player")
   }
 
-  /* SCREEN 1 — Library (reached only via back / direct route) */
+  /* SCREEN 1 — Library (via back / direct route) */
   if (step === "library") {
     return (
       <View className="flex-1" style={{ backgroundColor: INK }}>
@@ -112,10 +96,7 @@ export default function WatchFlow() {
                 >
                   <View className="overflow-hidden rounded-xl" style={{ backgroundColor: "#10163B" }}>
                     <Image source={f.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
-                    <LinearGradient
-                      colors={["transparent", "rgba(10,14,36,0.65)"]}
-                      style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 32 }}
-                    />
+                    <LinearGradient colors={["transparent", "rgba(10,14,36,0.65)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 32 }} />
                     <Text className="absolute bottom-1.5 right-2 text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
                     {!f.watched ? (
                       <View className="absolute left-1.5 top-1.5 rounded bg-marigold px-1.5 py-0.5">
@@ -138,27 +119,23 @@ export default function WatchFlow() {
     )
   }
 
-  /* SCREEN 2 — Player */
+  /* SCREEN 2 — Player (real video via expo-video) */
   if (step === "player") {
     return (
       <View className="flex-1" style={{ backgroundColor: INK }}>
         <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
           <Animated.View entering={FadeIn.duration(250)}>
-            <View className="relative w-full">
-              <Image source={film.poster} className="w-full" style={{ aspectRatio: 16 / 9 }} resizeMode="cover" />
+            <View className="relative w-full bg-black" style={{ aspectRatio: 16 / 9 }}>
+              <VideoView player={player} style={{ width: "100%", height: "100%" }} contentFit="contain" nativeControls />
               <LinearGradient
-                colors={["rgba(10,14,36,0.7)", "transparent"]}
-                style={{ position: "absolute", left: 0, right: 0, top: 0, height: Math.round(insets.top + 84) }}
+                colors={["rgba(10,14,36,0.65)", "transparent"]}
+                style={{ position: "absolute", left: 0, right: 0, top: 0, height: Math.round(insets.top + 72) }}
+                pointerEvents="none"
               />
-              <LinearGradient
-                colors={["transparent", "rgba(10,14,36,0.55)"]}
-                style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 96 }}
-              />
-
               <View style={{ paddingTop: insets.top + 8 }} className="absolute left-4 right-4 flex-row items-center justify-between">
                 <Pressable
                   onPress={() => (deepId ? router.back() : setStep("library"))}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-black/35"
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40"
                   accessibilityRole="button"
                   accessibilityLabel="Back"
                 >
@@ -166,36 +143,12 @@ export default function WatchFlow() {
                 </Pressable>
                 <Pressable
                   onPress={() => setStep("share")}
-                  className="h-11 w-11 items-center justify-center rounded-full bg-black/35"
+                  className="h-11 w-11 items-center justify-center rounded-full bg-black/40"
                   accessibilityRole="button"
                   accessibilityLabel="Share film"
                 >
                   <Share2 size={17} stroke="#FFF9F0" />
                 </Pressable>
-              </View>
-
-              <Pressable
-                onPress={() => setPlaying((p) => !p)}
-                className="absolute inset-0 items-center justify-center"
-                accessibilityRole="button"
-                accessibilityLabel={playing ? "Pause" : "Play"}
-              >
-                <View
-                  className="items-center justify-center rounded-full"
-                  style={{ width: 68, height: 68, backgroundColor: MARIGOLD, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }}
-                >
-                  {playing ? <Pause size={26} stroke="#1B1330" fill="#1B1330" /> : <Play size={26} stroke="#1B1330" fill="#1B1330" />}
-                </View>
-              </Pressable>
-
-              <View className="absolute bottom-0 left-0 right-0 px-4 pb-3">
-                <View className="h-1.5 overflow-hidden rounded-full bg-white/25">
-                  <View className="h-full rounded-full" style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: MARIGOLD }} />
-                </View>
-                <HStack className="mt-1.5 items-center justify-between">
-                  <Text className="text-[11px] font-body-semibold text-ticket/90">{clock(pos)}</Text>
-                  <Text className="text-[11px] text-ticket/70">{clock(film.durationSec)}</Text>
-                </HStack>
               </View>
             </View>
 
@@ -206,7 +159,10 @@ export default function WatchFlow() {
                   <Text className="text-xs text-ticket/50">{film.created}</Text>
                 </HStack>
                 <Pressable
-                  onPress={() => setPos(0)}
+                  onPress={() => {
+                    player.currentTime = 0
+                    player.play()
+                  }}
                   className="min-h-11 flex-row items-center gap-1.5 px-2"
                   accessibilityRole="button"
                   accessibilityLabel="Restart film"
@@ -216,48 +172,36 @@ export default function WatchFlow() {
                 </Pressable>
               </HStack>
 
-              <HStack space="sm" className="mt-1 items-baseline">
-                <Text className="font-display text-[30px] leading-[36px] text-ticket">{film.title}</Text>
-              </HStack>
+              <Text className="mt-1 font-display text-[30px] leading-[36px] text-ticket">{film.title}</Text>
               <Text className="font-display-italic text-[17px] leading-6 text-ticket/80">{film.subtitle}</Text>
 
               <HStack space="xs" className="mt-3 flex-wrap">
                 <Chip label={film.styleLabel} />
                 <Chip label={film.narrator} />
+                <Chip label={clock(film.durationSec)} />
                 <Chip label="480P" />
                 <Chip label={film.narrator === "Rio" || film.subtitle.includes("yerin") ? "Español / Türkçe" : "English"} />
               </HStack>
 
               <HStack space="sm" className="mt-5">
                 <Pressable
-                  onPress={() => setSubtitles((s) => !s)}
-                  className={`min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border ${subtitles ? "border-marigold/60 bg-marigold/15" : "border-white/15 bg-white/5"}`}
+                  onPress={() => setStep("share")}
+                  className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10"
                   accessibilityRole="button"
-                  accessibilityState={{ selected: subtitles }}
                 >
-                  <Subtitles size={15} stroke={subtitles ? MARIGOLD : "#FFF9F0"} />
-                  <Text className={`text-[13px] font-body-bold ${subtitles ? "text-marigold" : "text-ticket"}`}>Subtitles</Text>
+                  <Share2 size={15} stroke="#FFF9F0" />
+                  <Text className="text-[13px] font-body-bold text-ticket">Share</Text>
                 </Pressable>
-                <Pressable className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10">
+                <Pressable
+                  className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10"
+                  accessibilityRole="button"
+                >
                   <Download size={15} stroke="#FFF9F0" />
                   <Text className="text-[13px] font-body-bold text-ticket">Save</Text>
                 </Pressable>
-                <Pressable className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10">
-                  <Gauge size={15} stroke="#FFF9F0" />
-                  <Text className="text-[13px] font-body-bold text-ticket">480P</Text>
-                </Pressable>
               </HStack>
 
-              <HStack className="mt-4 items-center justify-center gap-8">
-                <Pressable onPress={() => setPos((p) => Math.max(0, p - 15))} className="h-11 w-11 items-center justify-center" accessibilityRole="button" accessibilityLabel="Back 15 seconds">
-                  <SkipBack size={20} stroke="#FFF9F0" />
-                </Pressable>
-                <Pressable onPress={() => setPos((p) => Math.min(film.durationSec, p + 15))} className="h-11 w-11 items-center justify-center" accessibilityRole="button" accessibilityLabel="Forward 15 seconds">
-                  <SkipForward size={20} stroke="#FFF9F0" />
-                </Pressable>
-              </HStack>
-
-              <View className="mt-2 h-px bg-white/10" />
+              <View className="mt-5 h-px bg-white/10" />
 
               <HStack className="mt-4 items-center justify-between">
                 <HStack space="xs" className="items-center">

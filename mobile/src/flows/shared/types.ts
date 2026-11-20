@@ -25,6 +25,7 @@ export type Film = {
   watched: boolean
   category: FilmCategory
   poster: ImageSourcePropType
+  video: string
 }
 
 export type JobStage =
