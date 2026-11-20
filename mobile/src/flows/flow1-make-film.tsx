@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
-import { Check, ChevronRight, Lock, Mic, Play, Plus, Ticket, X } from "lucide-react-native"
+import { BellRing, Check, ChevronRight, Clapperboard, Clock, Image as ImageIcon, Lock, Mic, Music, PenLine, Play, Plus, Scissors, Subtitles, Ticket, UserRound, X } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -19,6 +19,18 @@ type Step = "compose" | "gate" | "progress" | "result"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
+
+const STAGE_META: Record<(typeof STAGE_ORDER)[number], { Icon: typeof Play; line: string }> = {
+  script: { Icon: PenLine, line: "Writing tonight's story" },
+  character: { Icon: UserRound, line: "Designing the narrator" },
+  voice: { Icon: Mic, line: "Recording the narration" },
+  keyframes: { Icon: ImageIcon, line: "Painting the keyframes" },
+  shots: { Icon: Clapperboard, line: "Filming the shots" },
+  score: { Icon: Music, line: "Composing the score" },
+  edit: { Icon: Scissors, line: "Cutting the picture" },
+  subtitles: { Icon: Subtitles, line: "Adding word-by-word subtitles" },
+}
+
 const CARD_SHADOW = {
   shadowColor: "#1B1330",
   shadowOpacity: 0.14,
@@ -556,56 +568,90 @@ export default function MakeAFilmFlow() {
      BRANCH: safe to leave; job continues (notifications)
      ================================================ */
   if (step === "progress") {
-    const progress = Math.round(((stageIndex + 1) / STAGE_ORDER.length) * 100)
+    const pct = Math.round(((stageIndex + 1) / STAGE_ORDER.length) * 100)
+    const stage = STAGE_ORDER[stageIndex]
+    const meta = STAGE_META[stage]
+    const readyIn = minutes * 4 + 2
     return (
       <LinearGradient colors={NOCTURNE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
-        <View className="absolute -right-10 top-1/3 h-52 w-52 rounded-full border border-marigold/15" />
-        <View className="flex-1 px-6 pt-16">
-          <Animated.View entering={FadeInDown.duration(420)}>
-            <VStack space="lg">
-              <HStack space="sm" className="items-center">
-                <Image source={narrator.photo} className="h-14 w-14 rounded-full border-2 border-marigold" resizeMode="cover" />
-                <VStack space="xs" className="flex-1">
-                  <Eyebrow tone="marigold">Now rolling</Eyebrow>
-                  <Text className="font-display text-2xl leading-7 text-ticket" numberOfLines={3}>
-                    {title}
-                  </Text>
-                </VStack>
-              </HStack>
+        <View className="absolute -left-16 top-24 h-56 w-56 rounded-full border border-marigold/15" />
+        <View className="absolute -right-10 top-1/2 h-48 w-48 rounded-full border border-coral/20" />
+        <View className="absolute left-10 top-40 h-1.5 w-1.5 rounded-full bg-marigold/70" />
+        <View className="absolute right-16 top-32 h-1 w-1 rounded-full bg-coral/60" />
 
-              <HStack className="items-end justify-between">
-                <Text className="font-display text-[56px] leading-[60px] text-marigold">{progress}%</Text>
-                <Text className={`${EYEBROW} mb-2 text-ticket/50`}>In production</Text>
-              </HStack>
-
-              <View className="h-1.5 overflow-hidden rounded-full bg-ticket/15">
-                <View className="h-full rounded-full bg-marigold" style={{ width: `${progress}%` }} />
-              </View>
-
+        <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
+          <View className="px-6 pt-16">
+            <HStack className="items-center justify-between">
               <VStack space="xs">
-                {STAGE_ORDER.map((stage, i) => {
-                  const done = i < stageIndex
-                  const active = i === stageIndex
-                  return (
-                    <View key={stage} className={`rounded-xl px-3 py-2.5 ${active ? "bg-ticket/10" : ""}`}>
-                      <HStack space="sm" className="items-center">
-                        <View className={`h-2.5 w-2.5 rounded-full ${done ? "bg-marigold" : active ? "bg-coral" : "bg-ticket/20"}`} />
-                        <Text className={`flex-1 text-sm ${done ? "text-ticket/40" : active ? "font-body-bold text-ticket" : "text-ticket/30"}`}>
-                          {STAGE_LABELS[stage]}
-                        </Text>
-                        {active ? <Spinner size="small" /> : done ? <Text className="text-[11px] font-body-bold text-marigold">done</Text> : null}
-                      </HStack>
-                    </View>
-                  )
-                })}
+                <Eyebrow tone="marigold">In production</Eyebrow>
+                <Text className="font-display text-2xl leading-7 text-ticket">Tonight's show</Text>
               </VStack>
+              <View className="flex-row items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5">
+                <Clock size={12} stroke="#FFB627" />
+                <Text className="text-[11px] font-body-bold text-ticket/80">about {readyIn} min</Text>
+              </View>
+            </HStack>
 
-              <Text className="text-xs leading-4 text-ticket/45">
-                You can leave this screen — the film keeps going and we'll nudge you when it's ready.
+            <View className="mt-8 items-center">
+              <View className="absolute h-52 w-52 rounded-full" style={{ backgroundColor: "rgba(255,182,39,0.08)" }} />
+              <View className="absolute h-40 w-40 rounded-full border border-white/10" />
+              <View className="relative">
+                <Image source={narrator.photo} className="h-32 w-32 rounded-full border-2 border-marigold" resizeMode="cover" />
+                <View className="-rotate-2 absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-md bg-coral px-2 py-0.5">
+                  <Text className={`${EYEBROW} text-ticket`}>On air</Text>
+                </View>
+              </View>
+              <Text className="mt-5 font-display text-[64px] leading-[68px] text-marigold">{pct}%</Text>
+              <Text className="text-[13px] text-ticket/60">
+                {title}
               </Text>
-            </VStack>
-          </Animated.View>
-        </View>
+              <View className="mt-4 h-1.5 w-56 overflow-hidden rounded-full bg-white/15">
+                <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: "#FFB627" }} />
+              </View>
+            </View>
+
+            <View className="mt-8 flex-row items-center gap-3 rounded-2xl border border-marigold/30 bg-marigold/10 p-4">
+              <View className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: "#FFB627" }}>
+                <meta.Icon size={19} stroke="#1B1330" />
+              </View>
+              <VStack space="xs" className="flex-1">
+                <Text className={`${EYEBROW} text-marigold`}>Now: {STAGE_LABELS[stage]}</Text>
+                <Text className="text-sm font-body-semibold text-ticket">{meta.line}</Text>
+              </VStack>
+              <Spinner size="small" />
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingTop: 22, paddingBottom: 6 }}>
+              {STAGE_ORDER.map((st, i) => {
+                const done = i < stageIndex
+                const active = i === stageIndex
+                const Icon = STAGE_META[st].Icon
+                return (
+                  <VStack key={st} space="xs" className="w-16 items-center">
+                    <View
+                      className={`h-11 w-11 items-center justify-center rounded-full border ${done ? "border-marigold/50 bg-marigold/15" : active ? "border-marigold" : "border-white/10 bg-white/5"}`}
+                      style={active ? { backgroundColor: "#FFB627" } : undefined}
+                    >
+                      <Icon size={17} stroke={active ? "#1B1330" : done ? "#FFB627" : "#FFF9F040"} />
+                    </View>
+                    <Text className={`text-[10px] uppercase tracking-[0.5px] ${active ? "font-body-bold text-marigold" : done ? "text-ticket/60" : "text-ticket/30"}`}>
+                      {STAGE_LABELS[st]}
+                    </Text>
+                  </VStack>
+                )
+              })}
+            </ScrollView>
+
+            <View className="mt-6 flex-row items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-white/10">
+                <BellRing size={15} stroke="#FFB627" />
+              </View>
+              <Text className="flex-1 text-[13px] leading-5 text-ticket/70">
+                Safe to leave — we'll nudge you the moment the film is ready.
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
       </LinearGradient>
     )
   }
