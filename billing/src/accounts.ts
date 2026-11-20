@@ -1,6 +1,6 @@
 import { PLANS, type Plan } from "./credits";
 import { HttpError, now, randomId, sha256, str } from "./http";
-import { record } from "./ledger";
+import { recordStmt } from "./ledger";
 
 type Db = { DB: D1Database; HASH_SALT: string };
 
@@ -22,17 +22,17 @@ export const planOf = (account: Account): Plan =>
 export async function createAccount(env: Db, device: string, idfv: string) {
   const deviceHash = await sha256(`${env.HASH_SALT}|d|${str(device, 200)}`);
   const idfvHash = await sha256(`${env.HASH_SALT}|i|${str(idfv, 200)}`);
-  const existing = await env.DB.prepare("SELECT id FROM accounts WHERE device_hash = ?").bind(deviceHash).first<{ id: string }>();
-  if (existing) throw new HttpError(409, "this device is already registered");
 
   const id = randomId(12);
   const token = randomId(40);
-  await env.DB.prepare(
-    "INSERT INTO accounts (id, token_hash, device_hash, idfv_hash, plan, created) VALUES (?, ?, ?, ?, 'trial', ?)",
-  )
-    .bind(id, await sha256(token), deviceHash, idfvHash, now())
-    .run();
-  await record(env, id, "grant", PLANS.trial.credits, `trial:${id}`);
+  const [created] = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO accounts (id, token_hash, device_hash, idfv_hash, plan, created) SELECT ?, ?, ?, ?, 'trial', ? WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE device_hash = ?)",
+    ).bind(id, await sha256(token), deviceHash, idfvHash, now(), deviceHash),
+    recordStmt(env, id, "grant", PLANS.trial.credits, `trial:${deviceHash}`),
+  ]);
+
+  if ((created?.meta?.changes ?? 0) === 0) throw new HttpError(409, "this device is already registered");
   return { account: id, token };
 }
 

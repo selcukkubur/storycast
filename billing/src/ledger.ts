@@ -4,12 +4,14 @@ type Db = { DB: D1Database };
 
 export type EntryKind = "grant" | "topup" | "debit" | "refund" | "adjust";
 
-export async function record(db: Db, pool: string, kind: EntryKind, credits: number, ref: string, jobId?: string): Promise<boolean> {
-  const r = await db.DB.prepare(
+export function recordStmt(db: Db, pool: string, kind: EntryKind, credits: number, ref: string, jobId?: string) {
+  return db.DB.prepare(
     "INSERT OR IGNORE INTO ledger (pool, kind, credits, ref, job_id, created) VALUES (?, ?, ?, ?, ?, ?)",
-  )
-    .bind(pool, kind, credits, ref, jobId ?? null, now())
-    .run();
+  ).bind(pool, kind, credits, ref, jobId ?? null, now());
+}
+
+export async function record(db: Db, pool: string, kind: EntryKind, credits: number, ref: string, jobId?: string): Promise<boolean> {
+  const r = await recordStmt(db, pool, kind, credits, ref, jobId).run();
   return (r.meta?.changes ?? 0) === 1;
 }
 
