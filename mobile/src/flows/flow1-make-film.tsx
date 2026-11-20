@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
-import { Check, ChevronRight, Lock, Play, Plus, Ticket, X } from "lucide-react-native"
+import { Check, ChevronRight, Lock, Mic, Play, Plus, Ticket, X } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { router } from "expo-router"
 import { NARRATORS, LOOKS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
 import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
+import { VOICES, voiceOf } from "@/src/flows/shared/voices"
 import { STAGE_LABELS, STAGE_ORDER, creditsFor, type Resolution } from "@/src/flows/shared/types"
 
 type Step = "compose" | "gate" | "progress" | "result"
@@ -69,6 +70,8 @@ export default function MakeAFilmFlow() {
   const [langCode, setLangCode] = useState("en")
   const [langOpen, setLangOpen] = useState(false)
   const [langQuery, setLangQuery] = useState("")
+  const [voiceId, setVoiceId] = useState(VOICES[0].id)
+  const [voiceOpen, setVoiceOpen] = useState(false)
   const [gateAnswer, setGateAnswer] = useState("")
   const [gateError, setGateError] = useState("")
   const [stageIndex, setStageIndex] = useState(0)
@@ -241,26 +244,43 @@ export default function MakeAFilmFlow() {
 
               <VStack space="sm">
                 <Eyebrow tone="soft">Narration</Eyebrow>
-                <Pressable
-                  onPress={() => {
-                    setLangQuery("")
-                    setLangOpen(true)
-                  }}
-                  className="active:opacity-90"
-                  accessibilityRole="button"
-                  accessibilityLabel="Choose narration language"
-                >
-                  <View className="flex-row items-center justify-between rounded-3xl bg-ticket p-4" style={CARD_SHADOW}>
+                <View className="overflow-hidden rounded-3xl bg-ticket" style={CARD_SHADOW}>
+                  <Pressable
+                    onPress={() => {
+                      setLangQuery("")
+                      setLangOpen(true)
+                    }}
+                    className="flex-row items-center justify-between p-4 active:bg-paper/60"
+                    accessibilityRole="button"
+                    accessibilityLabel="Choose narration language"
+                  >
                     <VStack space="xs">
                       <Text className="text-[15px] font-body-bold text-ink">{languageOf(langCode).native}</Text>
-                      <Text className="text-xs text-ink-soft">{languageOf(langCode).name} · narrators speak it natively</Text>
+                      <Text className="text-xs text-ink-soft">{languageOf(langCode).name} · {LANGUAGES.length} languages</Text>
                     </VStack>
-                    <HStack space="xs" className="items-center">
-                      <Text className="text-xs font-body-semibold text-ink-soft">{LANGUAGES.length}</Text>
-                      <ChevronRight size={16} stroke="#5A4F66" />
+                    <ChevronRight size={16} stroke="#5A4F66" />
+                  </Pressable>
+                  <View className="h-px bg-ink/10" />
+                  <Pressable
+                    onPress={() => setVoiceOpen(true)}
+                    className="flex-row items-center justify-between p-4 active:bg-paper/60"
+                    accessibilityRole="button"
+                    accessibilityLabel="Choose narration voice"
+                  >
+                    <HStack space="sm" className="flex-1 items-center">
+                      <View className="h-9 w-9 items-center justify-center rounded-full bg-paper">
+                        <Mic size={15} stroke="#22319B" />
+                      </View>
+                      <VStack space="xs" className="flex-1 pr-2">
+                        <Text className="text-[15px] font-body-bold text-ink">{voiceOf(voiceId).name}</Text>
+                        <Text className="text-xs text-ink-soft" numberOfLines={1}>
+                          {voiceOf(voiceId).description}
+                        </Text>
+                      </VStack>
                     </HStack>
-                  </View>
-                </Pressable>
+                    <ChevronRight size={16} stroke="#5A4F66" />
+                  </Pressable>
+                </View>
               </VStack>
 
               <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
@@ -342,6 +362,59 @@ export default function MakeAFilmFlow() {
             </VStack>
           </Animated.View>
         </ScrollView>
+
+        <Modal visible={voiceOpen} transparent animationType="slide" onRequestClose={() => setVoiceOpen(false)}>
+          <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(10,14,36,0.55)" }}>
+            <View className="max-h-[72%] rounded-t-3xl bg-paper px-5 pb-8 pt-4">
+              <HStack className="items-center justify-between">
+                <VStack space="xs">
+                  <Eyebrow tone="soft">Narration voice</Eyebrow>
+                  <Text className="font-display text-2xl text-ink">Who reads it aloud?</Text>
+                </VStack>
+                <Pressable
+                  onPress={() => setVoiceOpen(false)}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-ticket"
+                  accessibilityRole="button"
+                  accessibilityLabel="Close voice picker"
+                >
+                  <X size={18} stroke="#1B1330" />
+                </Pressable>
+              </HStack>
+              <FlatList
+                className="mt-3"
+                data={VOICES}
+                keyExtractor={(v) => v.id}
+                renderItem={({ item }) => {
+                  const active = item.id === voiceId
+                  return (
+                    <Pressable
+                      onPress={() => {
+                        setVoiceId(item.id)
+                        setVoiceOpen(false)
+                      }}
+                      className={`min-h-12 flex-row items-center justify-between rounded-xl px-3 py-2.5 ${active ? "bg-royal" : ""}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <HStack space="sm" className="flex-1 items-center">
+                        <View className={`h-9 w-9 items-center justify-center rounded-full ${active ? "bg-ticket/15" : "bg-ticket"}`}>
+                          <Mic size={15} stroke={active ? "#FFF9F0" : "#22319B"} />
+                        </View>
+                        <VStack space="xs" className="flex-1 pr-2">
+                          <Text className={`text-[15px] font-body-semibold ${active ? "text-ticket" : "text-ink"}`}>{item.name}</Text>
+                          <Text className={`text-xs ${active ? "text-ticket/70" : "text-ink-soft"}`} numberOfLines={1}>
+                            {item.description}
+                          </Text>
+                        </VStack>
+                      </HStack>
+                      {active ? <Check size={16} stroke="#FFF9F0" /> : null}
+                    </Pressable>
+                  )
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
 
         <Modal visible={langOpen} transparent animationType="slide" onRequestClose={() => setLangOpen(false)}>
           <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(10,14,36,0.55)" }}>
