@@ -4,3 +4,5 @@ dist/
 .env*
 !web/.env.example
 tools/cost-eval/out*/
+.wrangler/
+.dev.vars
