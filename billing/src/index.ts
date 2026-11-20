@@ -1,5 +1,6 @@
 import { authenticate, createAccount, planOf, pool } from "./accounts";
-import { PLANS, canStart, settleRefund, type Resolution } from "./credits";
+import { PRODUCTS, serverApiVerifier, type AppleVerifier } from "./apple";
+import { PLANS, canStart, settleRefund, type Plan, type Resolution } from "./credits";
 import { HttpError, falUrl, json, num, now, randomId, str } from "./http";
 import { balance, record } from "./ledger";
 import { ALLOWED_APPS, falMetadata, falResult, falStatus, falSubmit, falUpload } from "./proxy";
@@ -24,7 +25,17 @@ const body = async (req: Request) => {
   }
 };
 
-export function createApp() {
+const period = () => new Date().toISOString().slice(0, 7);
+
+async function grantMonth(env: Env, walletPool: string, plan: Plan) {
+  const bal = await balance(env, walletPool);
+  const grant = Math.min(PLANS[plan].credits, Math.max(0, PLANS[plan].rolloverCap - bal));
+  if (grant > 0) await record(env, walletPool, "grant", grant, `grant:${period()}:${walletPool}`);
+}
+
+export type Deps = { verifier?: AppleVerifier };
+
+export function createApp(deps: Deps = {}) {
   return {
     async fetch(req: Request, env: Env): Promise<Response> {
       try {
@@ -159,6 +170,40 @@ export function createApp() {
             .bind(outcome, videoUrl, job.id)
             .run();
           return json({ refund, creditsLeft: await balance(env, job.pool) });
+        }
+
+        if (req.method === "POST" && path === "/apple/subscription") {
+          const account = await authenticate(env, req);
+          const b = await body(req);
+          const verifier = deps.verifier ?? serverApiVerifier(env);
+          const sub = await verifier.subscription(str(b.transactionId, 100));
+          const active = !sub.revoked && sub.expiresAt > now();
+          const plan: Plan = active ? sub.plan : "trial";
+          await env.DB.prepare(
+            "UPDATE accounts SET plan = ?, expires_at = ?, apple_token = COALESCE(?, apple_token), orig_txn = ? WHERE id = ?",
+          )
+            .bind(
+              active ? sub.plan : account.plan,
+              sub.expiresAt,
+              sub.appAccountToken,
+              sub.originalTransactionId,
+              account.id,
+            )
+            .run();
+          if (active) await grantMonth(env, pool(account), sub.plan);
+          return json({ plan, credits: await balance(env, pool(account)), expiresAt: sub.expiresAt });
+        }
+
+        if (req.method === "POST" && path === "/apple/topup") {
+          const account = await authenticate(env, req);
+          const b = await body(req);
+          const verifier = deps.verifier ?? serverApiVerifier(env);
+          const sub = await verifier.subscription(str(b.transactionId, 100));
+          const credits = PRODUCTS[sub.productId]?.topup;
+          if (!credits) throw new HttpError(400, "not a top-up product");
+          if (sub.revoked) throw new HttpError(402, "purchase was revoked");
+          await record(env, pool(account), "topup", credits, `topup:${sub.originalTransactionId}`);
+          return json({ creditsAdded: credits, creditsLeft: await balance(env, pool(account)) });
         }
 
         throw new HttpError(404, "not found");
