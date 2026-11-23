@@ -16,6 +16,7 @@ export interface Env {
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
   APPLE_BUNDLE_ID?: string;
+  DEV_CREDITS_TOKEN?: string;
   ACCOUNT_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
 }
 
@@ -59,7 +60,7 @@ function producedVideos(body: unknown): string[] {
   return found;
 }
 
-export type Deps = { verifier?: AppleVerifier };
+export type Deps = { verifier?: AppleVerifier; devToken?: string };
 
 export function createApp(deps: Deps = {}) {
   return {
@@ -362,6 +363,16 @@ export function createApp(deps: Deps = {}) {
             }
           }
           return json({ ok: true });
+        }
+
+        if (req.method === "POST" && path === "/dev/credits") {
+          const devToken = deps.devToken ?? env.DEV_CREDITS_TOKEN;
+          if (!devToken || req.headers.get("x-dev-token") !== devToken) throw new HttpError(404, "not found");
+          const account = await authenticate(env, req);
+          const b = await body(req);
+          const credits = Math.min(10, Math.max(1, Math.round(num(b.credits))));
+          await record(env, pool(account), "adjust", credits, `dev:${account.id}:${Date.now()}`);
+          return json({ creditsLeft: await balance(env, pool(account)) });
         }
 
         throw new HttpError(404, "not found");
