@@ -41,6 +41,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "sync-data": "node scripts/sync-data.mjs",
+    "make-watermark": "node scripts/make-watermark.mjs",
     "test": "vitest run"
   },
   "private": true
