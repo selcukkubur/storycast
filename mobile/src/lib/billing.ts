@@ -17,13 +17,16 @@ export class BillingError extends Error {
 
 let token: string | null = null;
 let jobId: string | null = null;
-let ready: Promise<void> | null = null;
+let registering: Promise<void> | null = null;
 
 export const billingActive = () => Boolean(token);
 
+/**
+ * Restores the session token from the keychain. Every call is a real keychain
+ * read, so this is a once-per-app-start (or once-per-flow) operation: T9 must
+ * not call it per render.
+ */
 export async function initBilling(): Promise<void> {
-  ready ??= Promise.resolve();
-  await ready;
   token = await SecureStore.getItemAsync(TOKEN_KEY);
 }
 
@@ -48,6 +51,11 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return r;
 }
 
+/** Error bodies are not always JSON (proxies, gateways); never let a parse failure mask the status. */
+async function readJson<T>(r: Response): Promise<T> {
+  return (await r.json().catch(() => ({}))) as T;
+}
+
 export async function ensureDeviceId(): Promise<{ device: string; idfv: string }> {
   let device = await SecureStore.getItemAsync(DEVICE_KEY);
   if (!device) {
@@ -64,7 +72,7 @@ export async function registerDevice(device: string, idfv: string): Promise<void
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ device, idfv }),
   });
-  const b = (await r.json()) as { token?: string; error?: string };
+  const b = await readJson<{ token?: string; error?: string }>(r);
   if (r.status === 409) throw new BillingError(409, "device already registered");
   if (!r.ok || !b.token) throw new BillingError(r.status, b.error ?? "registration failed");
   await setToken(b.token);
@@ -72,23 +80,30 @@ export async function registerDevice(device: string, idfv: string): Promise<void
 
 export async function ensureDevice(device: string, idfv: string): Promise<void> {
   await initBilling();
-  if (!token) await registerDevice(device, idfv);
+  if (token) return;
+  // Two concurrent callers must share one registration: the loser would 409.
+  registering ??= registerDevice(device, idfv).finally(() => {
+    registering = null;
+  });
+  await registering;
 }
 
 export async function wallet(): Promise<{ plan: string; credits: number; maxMinutes: number }> {
   const r = await call("/wallet");
-  const b = (await r.json()) as { plan: string; credits: number; maxMinutes: number };
+  const b = await readJson<{ plan: string; credits: number; maxMinutes: number }>(r);
   if (!r.ok) throw new BillingError(r.status, "wallet unavailable");
   return b;
 }
 
 export async function startFilm(minutes: number, resolution: "480P" | "768P") {
+  // A failed second film must not leave the previous job adoptable/settleable.
+  jobId = null;
   const r = await call("/jobs", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ minutes, resolution }),
   });
-  const b = (await r.json()) as { jobId?: string; cost: number; creditsLeft: number; watermark: boolean; error?: string };
+  const b = await readJson<{ jobId?: string; cost: number; creditsLeft: number; watermark: boolean; error?: string }>(r);
   if (!r.ok || !b.jobId) throw new BillingError(r.status, b.error ?? "film refused", b.error);
   jobId = b.jobId;
   return { jobId: b.jobId, cost: b.cost, creditsLeft: b.creditsLeft, watermark: b.watermark };
@@ -107,13 +122,13 @@ export async function billingRun<T>(app: string, input: Record<string, unknown>)
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ app, input }),
   });
-  const sub = (await s.json()) as { request_id?: string; error?: string };
+  const sub = await readJson<{ request_id?: string; error?: string }>(s);
   if (!s.ok || !sub.request_id) throw new BillingError(s.status, `${app}: ${sub.error ?? s.status}`, sub.error);
   const rid = sub.request_id;
   for (let i = 0; i < 40; i++) {
     const st = await call(`/jobs/${jobId}/calls/${rid}/status`);
     if (!st.ok) throw new BillingError(st.status, `${app}: status ${st.status}`);
-    const body = (await st.json()) as { status?: string };
+    const body = await readJson<{ status?: string }>(st);
     if (body.status === "COMPLETED") break;
     if (body.status === "ERROR") throw new BillingError(500, `${app}: request failed`);
     if (i === 39) throw new BillingError(504, `${app}: timed out`);
@@ -121,28 +136,42 @@ export async function billingRun<T>(app: string, input: Record<string, unknown>)
   }
   const r = await call(`/jobs/${jobId}/calls/${rid}/result`);
   if (!r.ok) throw new BillingError(r.status, `${app}: result failed`);
-  return (await r.json()) as T;
+  return readJson<T>(r);
 }
 
 export async function billingUpload(file: { uri: string; name: string; type: string }): Promise<string> {
   const form = new FormData();
   form.append("file", { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
   const r = await call("/upload", { method: "POST", body: form });
-  const b = (await r.json()) as { url?: string; error?: string };
+  const b = await readJson<{ url?: string; error?: string }>(r);
   if (!r.ok || !b.url) throw new BillingError(r.status, b.error ?? "upload failed");
   return b.url;
 }
 
-export async function settleFilm(outcome: "done" | "error", videoUrl?: string) {
-  if (!jobId) return { refund: 0 as number, creditsLeft: undefined as number | undefined };
-  const r = await call(`/jobs/${jobId}/settle`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ outcome, videoUrl }),
-  });
-  const b = (await r.json().catch(() => ({}))) as { refund?: number; creditsLeft?: number };
-  jobId = null;
-  return { refund: b.refund ?? 0, creditsLeft: b.creditsLeft };
+/**
+ * Settles the open job. `jobId` is only released on a 2xx response, so the
+ * caller can retry the same settle (spec §6: up to 3 attempts) after a
+ * network/5xx failure instead of orphaning the debit and locking the pool
+ * until RUNNING_JOB_TTL.
+ */
+export async function settleFilm(
+  outcome: "done" | "error",
+  videoUrl?: string,
+): Promise<{ ok: boolean; status: number; refund: number; creditsLeft?: number }> {
+  if (!jobId) return { ok: true, status: 0, refund: 0, creditsLeft: undefined };
+  let r: Response;
+  try {
+    r = await call(`/jobs/${jobId}/settle`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ outcome, videoUrl }),
+    });
+  } catch {
+    return { ok: false, status: 0, refund: 0 };
+  }
+  const b = await readJson<{ refund?: number; creditsLeft?: number }>(r);
+  if (r.ok) jobId = null;
+  return { ok: r.ok, status: r.status, refund: b.refund ?? 0, creditsLeft: b.creditsLeft };
 }
 
 export async function devTopUp(credits: number, devToken: string): Promise<{ creditsLeft: number }> {
@@ -151,7 +180,7 @@ export async function devTopUp(credits: number, devToken: string): Promise<{ cre
     headers: { "content-type": "application/json", "x-dev-token": devToken },
     body: JSON.stringify({ credits }),
   });
-  const b = (await r.json()) as { creditsLeft?: number; error?: string };
+  const b = await readJson<{ creditsLeft?: number; error?: string }>(r);
   if (!r.ok) throw new BillingError(r.status, b.error ?? "top-up failed");
   return { creditsLeft: b.creditsLeft ?? 0 };
 }

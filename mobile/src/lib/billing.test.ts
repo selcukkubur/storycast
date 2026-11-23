@@ -9,7 +9,7 @@ vi.mock("expo-secure-store", () => ({
 vi.mock("expo-application", () => ({ getIosIdForVendorAsync: async () => "idfv-test" }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "device-uuid-test" }));
 
-import { billingActive, billingRun, ensureDevice, initBilling, settleFilm, startFilm } from "./billing";
+import { billingActive, billingRun, devTopUp, ensureDevice, initBilling, settleFilm, startFilm } from "./billing";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -54,5 +54,31 @@ describe("billing client", () => {
     await startFilm(1, "480P");
     await expect(settleFilm("error")).resolves.toBeTruthy();
     expect(billingActive()).toBe(false);
+  });
+
+  it("keeps the job on a failed settle so the caller can retry", async () => {
+    const responses = [
+      json({ token: "t" }),
+      json({ jobId: "job-1", cost: 1, creditsLeft: 0, watermark: false }),
+      json({ error: "boom" }, 500),
+      json({ refund: 1, creditsLeft: 0 }),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async () => responses.shift()!));
+    await initBilling();
+    await ensureDevice("dev", "idfv");
+    await startFilm(1, "480P");
+    await expect(settleFilm("done")).resolves.toMatchObject({ ok: false, status: 500 });
+    await expect(settleFilm("done")).resolves.toMatchObject({ ok: true, refund: 1 });
+  });
+
+  it("sends the dev token header on top-up and returns creditsLeft", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => json({ token: "t", creditsLeft: 7 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await initBilling();
+    await ensureDevice("dev", "idfv");
+    await expect(devTopUp(5, "dev-secret")).resolves.toEqual({ creditsLeft: 7 });
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(String(url)).toBe("https://billing.test/dev/credits");
+    expect((init?.headers as Record<string, string>)["x-dev-token"]).toBe("dev-secret");
   });
 });
