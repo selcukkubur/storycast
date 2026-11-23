@@ -85,8 +85,9 @@ function GoldButton({ label, disabled, onPress, icon }: { label: string; disable
 /**
  * Recovery pass for records whose settle never landed: an errored film holding an open job, and
  * a finished film whose settle failed (the job is still open even though the video is safe).
- * `settle_pending === false` marks a record an earlier pass already closed; 409 means the server
- * closed it (settled or produced) so retrying is pointless. Settles by explicit id and never
+ * `settle_pending === false` marks a record an earlier pass already closed. Any 4xx (409 closed,
+ * 404 unknown, 401/400 refusal) is permanent — the server will answer the same way on every
+ * launch — so it closes the record too and never retries. Settles by explicit id and never
  * adopts the job, so a film started while this runs keeps its own id and debit.
  */
 async function settleStale(records: FilmRecord[]): Promise<void> {
@@ -105,7 +106,7 @@ async function settleStale(records: FilmRecord[]): Promise<void> {
           ? await settleJobById(r.job_id!, "done", r.result.video)
           : await settleJobById(r.job_id!, "error")
       if (s.ok) await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
-      else if (s.status === 409) await saveRecord({ ...r, settle_pending: false })
+      else if (s.status >= 400 && s.status < 500) await saveRecord({ ...r, settle_pending: false })
       else await saveRecord({ ...r, settle_pending: true }).catch(() => {})
     } catch {
       await saveRecord({ ...r, settle_pending: true }).catch(() => {})
@@ -154,7 +155,7 @@ export default function MakeAFilmFlow() {
   const [record, setRecord] = useState<FilmRecord | null>(null)
   const [errorText, setErrorText] = useState("")
   const [refund, setRefund] = useState<number | null>(null)
-  const { credits, maxMinutes, refresh } = useWallet()
+  const { credits, maxMinutes, loading: walletLoading, error: walletError, refresh } = useWallet()
   const [resumable, setResumable] = useState<FilmRecord | null>(null)
   const [away, setAway] = useState(false)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
@@ -171,7 +172,22 @@ export default function MakeAFilmFlow() {
   const cancelledRef = useRef(false)
 
   const cost = creditsFor(minutes, resolution)
-  const canAfford = cost <= credits && minutes <= maxMinutes
+  // While the first /wallet answer is in flight (or after a failed fetch) the ticket book is
+  // unknown: the fallback 0 must never read as "you are out of tickets".
+  const walletReady = !walletLoading && !walletError
+  const canAfford = walletReady && cost <= credits && minutes <= maxMinutes
+  const BILLING_DOWN = "Can't reach the billing service — check the tunnel and reopen this tab."
+  const stubNote = walletError
+    ? BILLING_DOWN
+    : walletLoading
+      ? "Checking your ticket book…"
+      : canAfford
+        ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
+        : minutes > maxMinutes
+          ? "Longer shows need a Family ticket book."
+          : "Your book is short a ticket — top it up to start."
+  // A billing outage outranks a stale server refusal; an unknown book never claims "0 tickets".
+  const admissionNote = walletLoading || walletError ? stubNote : notice || stubNote
   const narrator = useMemo(() => NARRATORS.find((n) => n.id === narratorId) ?? NARRATORS[0], [narratorId])
 
   // The pipeline forces `cast.style`, so the composer's look is whatever the narrator wears.
@@ -321,7 +337,15 @@ export default function MakeAFilmFlow() {
       if (cancelledRef.current) return
       if (done.status !== "done" || !done.result.video) throw new Error(done.error || "the film could not be finished")
       const s = await settleWithRetry("done", done.result.video)
-      setRecord(done)
+      // A cancel that landed while the pipeline or the settle was in flight owns the screen (it
+      // already settled the job as an error and set the refund): never flip to the premiere.
+      if (cancelledRef.current) return
+      const settled: FilmRecord = { ...done, settle_pending: !s.ok, refund: s.ok ? (s.refund ?? 0) : done.refund }
+      if (s.ok) {
+        // Persist the close so the next launch does not re-settle a film that is already paid for.
+        await saveRecord(settled).catch(() => {})
+      }
+      setRecord(settled)
       if (!s.ok) setSettlePending(true)
       // The server is authoritative for the ticket book: re-read it after every settle attempt.
       await refresh()
@@ -415,7 +439,9 @@ export default function MakeAFilmFlow() {
             >
               <HStack space="xs" className="items-center">
                 <Ticket size={13} stroke="#1B1330" />
-                <Text className={`${EYEBROW} text-ink`}>{credits} tickets</Text>
+                <Text className={`${EYEBROW} text-ink`}>
+                  {walletLoading ? "Checking tickets…" : walletError ? "—" : `${credits} tickets`}
+                </Text>
               </HStack>
             </View>
           </LinearGradient>
@@ -571,7 +597,9 @@ export default function MakeAFilmFlow() {
                 <Eyebrow tone="soft">Show settings</Eyebrow>
                 <HStack className="mt-3 justify-between">
                   <Text className="text-[15px] font-body-bold text-ink">Length</Text>
-                  <Text className="text-xs text-ink-soft">up to {maxMinutes} min on your plan</Text>
+                  <Text className="text-xs text-ink-soft">
+                    {walletReady ? `up to ${maxMinutes} min on your plan` : "checking your plan"}
+                  </Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {[1, 2, 3, 4, 5].map((m) => {
@@ -592,7 +620,9 @@ export default function MakeAFilmFlow() {
                 <View className="my-3 h-px bg-ink/10" />
                 <HStack className="justify-between">
                   <Text className="text-[15px] font-body-bold text-ink">Picture</Text>
-                  <Text className={`text-xs ${credits >= creditsFor(minutes, "768P") ? "text-ink-soft" : "font-body-bold text-coral"}`}>Sharper costs 2 tickets</Text>
+                  <Text className={`text-xs ${walletReady && credits < creditsFor(minutes, "768P") ? "font-body-bold text-coral" : "text-ink-soft"}`}>
+                    Sharper costs 2 tickets
+                  </Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {(["480P", "768P"] as Resolution[]).map((r) => {
@@ -619,13 +649,8 @@ export default function MakeAFilmFlow() {
                     <Text className="mt-2 font-display text-xl leading-6 text-ticket">
                       {minutes} min · {resolution.toLowerCase()} · {narrator.name}
                     </Text>
-                    <Text className={`mt-1.5 text-[13px] leading-5 ${notice ? "font-body-bold text-marigold" : "text-ticket/85"}`}>
-                      {notice ||
-                        (canAfford
-                          ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
-                          : minutes > maxMinutes
-                            ? "Longer shows need a Family ticket book."
-                            : "Your book is short a ticket — top it up to start.")}
+                    <Text className={`mt-1.5 text-[13px] leading-5 ${notice || walletError ? "font-body-bold text-marigold" : "text-ticket/85"}`}>
+                      {admissionNote}
                     </Text>
                     <View className="mt-4 flex-row items-end gap-[3px]">
                       {[3, 7, 4, 9, 3, 6, 10, 4, 7, 3, 8, 5, 9, 3].map((h, i) => (
@@ -758,6 +783,7 @@ export default function MakeAFilmFlow() {
             label="Make the film"
             disabled={!topic.trim() || !canAfford}
             onPress={() => {
+              if (walletLoading || walletError) return
               setGateError("")
               setGateAnswer("")
               setPhase("gate")

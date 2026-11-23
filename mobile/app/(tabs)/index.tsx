@@ -63,8 +63,9 @@ export default function HomeScreen() {
   const [filter, setFilter] = useState<FilterKey>("all")
   const [listMode, setListMode] = useState(false)
   const [mine, setMine] = useState<Film[]>([])
-  // Tickets come from the billing worker, not the design mock.
-  const { credits } = useWallet()
+  // Tickets come from the billing worker, not the design mock. While the first /wallet answer is
+  // in flight (or after a failure) the count is unknown, so the chip shows "—" instead of 0.
+  const { credits, loading: walletLoading, error: walletError } = useWallet()
 
   useFocusEffect(
     useCallback(() => {
@@ -125,7 +126,9 @@ export default function HomeScreen() {
               accessibilityLabel="Open ticket book"
             >
               <Ticket size={13} stroke="#FFB627" />
-              <Text className="font-body-bold text-xs text-marigold">{credits} tickets</Text>
+              <Text className="font-body-bold text-xs text-marigold">
+                {walletLoading || walletError ? "—" : `${credits} tickets`}
+              </Text>
             </Pressable>
           </View>
 

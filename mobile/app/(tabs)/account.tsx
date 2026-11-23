@@ -20,8 +20,9 @@ const CARD_SHADOW = {
 } as const
 
 export default function AccountScreen() {
-  // The activity list is still sample data; the balance is not.
-  const { credits } = useWallet()
+  // The activity list is still sample data; the balance is not — and an unanswered /wallet is an
+  // unknown book ("Checking…"), never a zero balance.
+  const { credits, loading: walletLoading, error: walletError } = useWallet()
   return (
     <View className="flex-1 bg-paper">
       <ScrollView contentContainerClassName="pb-10">
@@ -34,8 +35,14 @@ export default function AccountScreen() {
           <View className="absolute -right-10 top-8 h-40 w-40 rounded-full border border-marigold/20" />
           <Text className={`${EYEBROW} text-marigold`}>Your ticket book</Text>
           <HStack space="sm" className="mt-1 items-baseline">
-            <Text className="font-display text-[56px] leading-[60px] text-ticket">{credits}</Text>
-            <Text className="text-[15px] text-ticket/85">tickets left</Text>
+            {walletLoading ? (
+              <Text className="font-display text-[40px] leading-[60px] text-ticket">Checking…</Text>
+            ) : (
+              <>
+                <Text className="font-display text-[56px] leading-[60px] text-ticket">{walletError ? "—" : credits}</Text>
+                <Text className="text-[15px] text-ticket/85">tickets left</Text>
+              </>
+            )}
           </HStack>
           <Text className="mt-1 text-[13px] leading-5 text-ticket/85">Unused tickets roll over one month, up to 6.</Text>
         </LinearGradient>

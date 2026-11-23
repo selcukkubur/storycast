@@ -64,7 +64,7 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
   const offer = PLAN_OFFERS.find((o) => o.id === selected) ?? PLAN_OFFERS[0]
   const price = annual ? offer.yearly : offer.monthly
   // The wallet screen tells the truth: the balance is whatever the billing worker says.
-  const { plan, credits, maxMinutes } = useWallet()
+  const { plan, credits, maxMinutes, loading: walletLoading, error: walletError } = useWallet()
   const planName = plan === "trial" ? "Trial" : plan === "starter" ? "Starter" : "Family"
 
   /* SCREEN 1 — Plans */
@@ -284,11 +284,17 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
           </HStack>
           <Text className={`${EYEBROW} mt-4 text-marigold`}>Your ticket book</Text>
           <HStack space="sm" className="mt-1 items-baseline">
-            <Text className="font-display text-[56px] leading-[60px] text-ticket">{credits}</Text>
-            <Text className="text-[15px] text-ticket/85">tickets left</Text>
+            {walletLoading ? (
+              <Text className="font-display text-[40px] leading-[60px] text-ticket">Checking…</Text>
+            ) : (
+              <>
+                <Text className="font-display text-[56px] leading-[60px] text-ticket">{walletError ? "—" : credits}</Text>
+                <Text className="text-[15px] text-ticket/85">tickets left</Text>
+              </>
+            )}
           </HStack>
           <Text className="mt-1 text-[13px] leading-5 text-ticket/85">
-            {planName} plan · films up to {maxMinutes} min
+            {walletLoading || walletError ? "Ticket book unavailable right now" : `${planName} plan · films up to ${maxMinutes} min`}
           </Text>
           {bought ? (
             <Text className="mt-2 text-[13px] font-body-bold leading-5 text-marigold">Demo only — no charge in this build</Text>
