@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The native expo modules are aliased to the node stub in `vitest.config.ts`; its
 // store is shared across tests in this file, so each test starts empty.
 import { memory } from "../../test/stubs/expo";
-import { billingActive, billingRun, devTopUp, ensureDevice, initBilling, settleFilm, startFilm } from "./billing";
+import { billingActive, billingRun, devTopUp, ensureDevice, initBilling, settleFilm, settleJobById, startFilm } from "./billing";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -64,6 +64,28 @@ describe("billing client", () => {
     await startFilm(1, "480P");
     await expect(settleFilm("done")).resolves.toMatchObject({ ok: false, status: 500 });
     await expect(settleFilm("done")).resolves.toMatchObject({ ok: true, refund: 1 });
+  });
+
+  it("settles a stale job by id without releasing the active job", async () => {
+    const responses = [
+      json({ token: "t" }),
+      json({ jobId: "job-1", cost: 1, creditsLeft: 0, watermark: false }),
+      json({ refund: 1 }),
+      json({ request_id: "r1" }),
+      json({ status: "COMPLETED" }),
+      json({ ok: true }),
+    ];
+    const fetchMock = vi.fn(async (_url: string | URL, _init?: RequestInit) => responses.shift()!);
+    vi.stubGlobal("fetch", fetchMock);
+    await initBilling();
+    await ensureDevice("dev", "idfv");
+    await startFilm(1, "480P");
+    // Stale-record recovery of an already settled job: must not clear job-1.
+    await expect(settleJobById("other-job", "error")).resolves.toMatchObject({ ok: true, status: 200, refund: 1 });
+    await billingRun("fal-ai/ffmpeg-api/metadata", {});
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContain("https://billing.test/jobs/other-job/settle");
+    expect(urls).toContain("https://billing.test/jobs/job-1/calls");
   });
 
   it("sends the dev token header on top-up and returns creditsLeft", async () => {

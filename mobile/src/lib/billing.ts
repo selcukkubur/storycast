@@ -148,20 +148,16 @@ export async function billingUpload(file: { uri: string; name: string; type: str
   return b.url;
 }
 
+export type SettleResult = { ok: boolean; status: number; refund: number; creditsLeft?: number };
+
 /**
- * Settles the open job. `jobId` is only released on a 2xx response, so the
- * caller can retry the same settle (spec §6: up to 3 attempts) after a
- * network/5xx failure instead of orphaning the debit and locking the pool
- * until RUNNING_JOB_TTL.
+ * The one settle path, keyed by an explicit id so recovering a stale job never
+ * reads or writes the module-level `jobId` (a new film may start mid-recovery).
  */
-export async function settleFilm(
-  outcome: "done" | "error",
-  videoUrl?: string,
-): Promise<{ ok: boolean; status: number; refund: number; creditsLeft?: number }> {
-  if (!jobId) return { ok: true, status: 0, refund: 0, creditsLeft: undefined };
+async function settle(job: string, outcome: "done" | "error", videoUrl?: string): Promise<SettleResult> {
   let r: Response;
   try {
-    r = await call(`/jobs/${jobId}/settle`, {
+    r = await call(`/jobs/${job}/settle`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ outcome, videoUrl }),
@@ -170,8 +166,25 @@ export async function settleFilm(
     return { ok: false, status: 0, refund: 0 };
   }
   const b = await readJson<{ refund?: number; creditsLeft?: number }>(r);
-  if (r.ok) jobId = null;
   return { ok: r.ok, status: r.status, refund: b.refund ?? 0, creditsLeft: b.creditsLeft };
+}
+
+/**
+ * Settles the open job. `jobId` is only released on a 2xx response, so the
+ * caller can retry the same settle (spec §6: up to 3 attempts) after a
+ * network/5xx failure instead of orphaning the debit and locking the pool
+ * until RUNNING_JOB_TTL.
+ */
+export async function settleFilm(outcome: "done" | "error", videoUrl?: string): Promise<SettleResult> {
+  if (!jobId) return { ok: true, status: 0, refund: 0, creditsLeft: undefined };
+  const s = await settle(jobId, outcome, videoUrl);
+  if (s.ok) jobId = null;
+  return s;
+}
+
+/** Settles a specific job (stale-record recovery) without touching the active job id. */
+export async function settleJobById(jobId: string, outcome: "done" | "error", videoUrl?: string): Promise<SettleResult> {
+  return settle(jobId, outcome, videoUrl);
 }
 
 export async function devTopUp(credits: number, devToken: string): Promise<{ creditsLeft: number }> {

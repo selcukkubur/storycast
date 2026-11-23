@@ -15,7 +15,7 @@ import { NARRATORS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-d
 import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
 import { VOICES, voiceOf } from "@/src/flows/shared/voices"
 import { creditsFor, type Resolution } from "@/src/flows/shared/types"
-import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, startFilm, wallet, BillingError } from "@/src/lib/billing"
+import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, settleJobById, startFilm, wallet, BillingError } from "@/src/lib/billing"
 import { newRecord, runFilm } from "@/src/lib/studio/pipeline"
 import { allRecords, saveRecord, type FilmRecord } from "@/src/lib/studio/store"
 import { studioData } from "@/src/lib/studio/data"
@@ -165,15 +165,17 @@ export default function MakeAFilmFlow() {
         setResumable(running ?? null)
         // A film whose finish failed may still hold an open job: settle it once, silently, so the
         // ticket book matches the server on the next launch. `settle_pending === false` marks a
-        // record the settle pass already closed.
+        // record the settle pass already closed. Recovery settles by id and never adopts the job,
+        // so a film started while this runs keeps its own job id (and debit).
         const stale = records.filter((r) => r.status === "error" && r.job_id && r.settle_pending !== false).slice(0, 3)
         for (const r of stale) {
-          if (!r.job_id) continue
           try {
-            adoptJob(r.job_id)
-            const s = await settleFilm("error")
-            if (!s.ok) throw new Error("settle failed")
-            await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
+            const s = await settleJobById(r.job_id!, "error")
+            if (s.ok) await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
+            // 409 = the job is closed (already settled or already produced a film): stop retrying,
+            // but keep the refund note a previous pass wrote.
+            else if (s.status === 409) await saveRecord({ ...r, settle_pending: false })
+            else await saveRecord({ ...r, settle_pending: true }).catch(() => {})
           } catch {
             await saveRecord({ ...r, settle_pending: true }).catch(() => {})
           }
@@ -260,8 +262,11 @@ export default function MakeAFilmFlow() {
   async function settleWithRetry(outcome: "done" | "error", videoUrl?: string) {
     type Settled = Awaited<ReturnType<typeof settleFilm>>
     const failed = (): Settled => ({ ok: false, status: 0, refund: 0, creditsLeft: undefined })
+    // A 4xx (409 closed job, 401, 4xx refusal) will never succeed on retry: only a dropped
+    // connection (status 0), a rate limit (429) or a 5xx is worth another attempt.
+    const retryable = (s: Settled) => s.status === 0 || s.status === 429 || s.status >= 500
     let s = await settleFilm(outcome, videoUrl).catch(failed)
-    for (let i = 1; i < SETTLE_TRIES && !s.ok; i++) {
+    for (let i = 1; i < SETTLE_TRIES && retryable(s); i++) {
       await new Promise((res) => setTimeout(res, 400 * i))
       s = await settleFilm(outcome, videoUrl).catch(failed)
     }
@@ -446,7 +451,7 @@ export default function MakeAFilmFlow() {
                   </HStack>
                 </ScrollView>
                 <Text className="text-[13px] leading-5 text-ink-soft">
-                  {narrator.personality} · voice: {narrator.voice}
+                  {narrator.personality} · voice: {voiceOf(voiceId).name}
                 </Text>
               </VStack>
 
