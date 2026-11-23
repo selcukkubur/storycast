@@ -10,12 +10,45 @@ export class FalError extends Error {
 
 export const isKeyError = (e: unknown) => e instanceof FalError && (e.status === 401 || e.status === 403);
 
-export async function run<T = any>(app: string, input: Record<string, unknown>, _retries = 1): Promise<T> {
-  try {
-    return await billingRun<T>(app, input);
-  } catch (e) {
-    if (e instanceof BillingError) throw new FalError(e.message, e.status);
-    throw e;
+/** Six calls in flight, same as web: the pipeline fans out per beat and bursts trip the proxy. */
+class Semaphore {
+  private queue: (() => void)[] = [];
+  private active = 0;
+  constructor(private readonly limit: number) {}
+  async acquire(): Promise<void> {
+    if (this.active < this.limit) {
+      this.active++;
+      return;
+    }
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+    this.active++;
+  }
+  release(): void {
+    this.active--;
+    this.queue.shift()?.();
+  }
+}
+const sem = new Semaphore(6);
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/** A dropped connection, a rate limit or a gateway hiccup is worth another attempt; a 4xx is not. */
+const RETRYABLE = new Set([0, 429, 503, 504]);
+const retryable = (e: unknown) =>
+  e instanceof FalError && e.status !== undefined && RETRYABLE.has(e.status);
+
+export async function run<T = any>(app: string, input: Record<string, unknown>, retries = 1): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    await sem.acquire();
+    try {
+      return await billingRun<T>(app, input);
+    } catch (e) {
+      // BillingError → FalError keeps the status the caller inspects (401/403 = key problem).
+      const err = e instanceof BillingError ? new FalError(e.message, e.status) : e;
+      if (!retryable(err) || attempt >= retries) throw err;
+    } finally {
+      sem.release();
+    }
+    await sleep(1500 * (attempt + 1));
   }
 }
 

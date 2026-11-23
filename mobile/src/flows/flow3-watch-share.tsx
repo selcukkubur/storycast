@@ -219,7 +219,7 @@ export default function WatchFlow() {
                 <Chip label={film.styleLabel} />
                 <Chip label={film.narrator} />
                 <Chip label={clock(film.durationSec)} />
-                <Chip label="480P" />
+                <Chip label={film.resolution ?? "480P"} />
                 <Chip label={languageOf(film.lang).native} />
               </HStack>
 

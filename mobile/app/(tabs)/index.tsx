@@ -8,8 +8,9 @@ import { Grid2x2, List, Play, Sparkles, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
-import { FILMS, WALLET } from "@/src/flows/shared/mock-data"
+import { FILMS } from "@/src/flows/shared/mock-data"
 import { generatedFilms } from "@/src/lib/generated"
+import { useWallet } from "@/src/lib/wallet-store"
 import type { Film, FilmCategory } from "@/src/flows/shared/types"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
@@ -62,6 +63,8 @@ export default function HomeScreen() {
   const [filter, setFilter] = useState<FilterKey>("all")
   const [listMode, setListMode] = useState(false)
   const [mine, setMine] = useState<Film[]>([])
+  // Tickets come from the billing worker, not the design mock.
+  const { credits } = useWallet()
 
   useFocusEffect(
     useCallback(() => {
@@ -122,7 +125,7 @@ export default function HomeScreen() {
               accessibilityLabel="Open ticket book"
             >
               <Ticket size={13} stroke="#FFB627" />
-              <Text className="font-body-bold text-xs text-marigold">{WALLET.credits} tickets</Text>
+              <Text className="font-body-bold text-xs text-marigold">{credits} tickets</Text>
             </Pressable>
           </View>
 

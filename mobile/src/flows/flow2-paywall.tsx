@@ -9,7 +9,8 @@ import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { Button, ButtonText } from "@/components/ui/button"
 import { InputField } from "@/components/ui/input"
-import { PLAN_OFFERS, LEDGER, WALLET } from "@/src/flows/shared/mock-data"
+import { PLAN_OFFERS, LEDGER } from "@/src/flows/shared/mock-data"
+import { useWallet } from "@/src/lib/wallet-store"
 
 type Step = "plans" | "gate" | "confirm" | "wallet"
 
@@ -62,6 +63,9 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
 
   const offer = PLAN_OFFERS.find((o) => o.id === selected) ?? PLAN_OFFERS[0]
   const price = annual ? offer.yearly : offer.monthly
+  // The wallet screen tells the truth: the balance is whatever the billing worker says.
+  const { plan, credits, maxMinutes } = useWallet()
+  const planName = plan === "trial" ? "Trial" : plan === "starter" ? "Starter" : "Family"
 
   /* SCREEN 1 — Plans */
   if (step === "plans") {
@@ -223,8 +227,8 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
           <Animated.View entering={FadeInDown.duration(300)}>
             <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
               <HStack className="items-center justify-between">
-                <Text className={`${EYEBROW} text-ink-soft`}>App Store</Text>
-                <Text className={`${EYEBROW} text-ink-soft`}>Sandbox</Text>
+                <Text className={`${EYEBROW} text-ink-soft`}>Demo purchase</Text>
+                <Text className={`${EYEBROW} text-ink-soft`}>No StoreKit</Text>
               </HStack>
               <View className="my-4 h-px bg-ink/10" />
               <VStack space="xs">
@@ -239,14 +243,17 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
               </VStack>
               <View className="mt-5">
                 <GoldButton
-                  label={`Subscribe · $${price}`}
+                  label={`Preview purchase · $${price}`}
                   onPress={() => {
                     setBought(true)
                     setStep("wallet")
                   }}
                 />
               </View>
-              <Pressable className="mt-3 items-center py-2" onPress={() => setStep("plans")}>
+              <Text className="mt-3 text-center text-[12px] leading-5 text-ink-soft">
+                This sheet is a preview. Nothing is charged and no tickets are added in this build.
+              </Text>
+              <Pressable className="mt-2 items-center py-2" onPress={() => setStep("plans")}>
                 <Text className="text-sm text-ink-soft">Not now</Text>
               </Pressable>
             </View>
@@ -270,17 +277,22 @@ export default function PaywallFlow({ onClose }: { onClose?: () => void }) {
               <ChevronLeft size={18} stroke="#FFF9F0" />
             </Pressable>
             {bought ? (
-              <View className="-rotate-2 rounded-md bg-marigold px-2 py-1">
-                <Text className={`${EYEBROW} text-ink`}>Plan active</Text>
+              <View className="-rotate-2 rounded-md bg-coral px-2 py-1">
+                <Text className={`${EYEBROW} text-ticket`}>Demo</Text>
               </View>
             ) : null}
           </HStack>
           <Text className={`${EYEBROW} mt-4 text-marigold`}>Your ticket book</Text>
           <HStack space="sm" className="mt-1 items-baseline">
-            <Text className="font-display text-[56px] leading-[60px] text-ticket">{WALLET.credits + (bought ? offer.creditsPerMonth : 0)}</Text>
+            <Text className="font-display text-[56px] leading-[60px] text-ticket">{credits}</Text>
             <Text className="text-[15px] text-ticket/85">tickets left</Text>
           </HStack>
-          <Text className="mt-1 text-[13px] leading-5 text-ticket/85">{WALLET.rolloverNote}</Text>
+          <Text className="mt-1 text-[13px] leading-5 text-ticket/85">
+            {planName} plan · films up to {maxMinutes} min
+          </Text>
+          {bought ? (
+            <Text className="mt-2 text-[13px] font-body-bold leading-5 text-marigold">Demo only — no charge in this build</Text>
+          ) : null}
         </LinearGradient>
 
         <Animated.View entering={FadeInDown.duration(420)}>

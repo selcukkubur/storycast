@@ -85,6 +85,13 @@ describe("dev credits", () => {
     expect((await topUp(app, token, "wrong", 3, envWithToken)).status).toBe(404);
   });
 
+  it("is disabled on a production deployment even with the right token", async () => {
+    const app = createApp({ devToken: "x" });
+    const { token } = await account(app);
+    const res = await topUp(app, token, "x", 3, { ...workerEnv, APPLE_ENVIRONMENT: "production" });
+    expect(res.status).toBe(404);
+  });
+
   it("rejects a valid dev token without a bearer token and leaves the wallet untouched", async () => {
     const app = createApp({ devToken: "s3cret" });
     const { token } = await account(app);

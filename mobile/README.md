@@ -19,6 +19,8 @@ The app talks to the billing worker; no fal key exists in the app.
 6. Start the app: `npx expo start --tunnel --clear` (the watcher is unreliable here; restart per change batch)
 7. Test credits: `curl -X POST -H "authorization: Bearer <token>" -H "x-dev-token: dev-token" -H "content-type: application/json" -d '{"credits":3}' <tunnel>/dev/credits`
 
+Never set DEV_CREDITS_TOKEN in a deployed environment — the endpoint is staging-only (a production worker 404s it).
+
 **Device checklist (P0 acceptance):** trial film 1 min 480P debits 1 ticket, real stages advance,
 MP4 plays in the premiere card and in /watch; forced failure refunds; background warning appears;
 relaunch offers Resume; generated film appears under "Made here".

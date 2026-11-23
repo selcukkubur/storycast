@@ -29,6 +29,8 @@ export type Film = {
   video: string
   topic: string
   lang: string
+  /** Only generated films carry a real picture setting; seeds are 480P. */
+  resolution?: Resolution
 }
 
 export type Wallet = {

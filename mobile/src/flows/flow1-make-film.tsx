@@ -11,13 +11,14 @@ import { Button, ButtonText } from "@/components/ui/button"
 import { InputField } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { router } from "expo-router"
-import { NARRATORS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
+import { NARRATORS, TOPIC_CHIPS, FILMS } from "@/src/flows/shared/mock-data"
 import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
 import { VOICES, voiceOf } from "@/src/flows/shared/voices"
 import { creditsFor, type Resolution } from "@/src/flows/shared/types"
-import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, settleJobById, startFilm, wallet, BillingError } from "@/src/lib/billing"
+import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, settleJobById, startFilm, BillingError } from "@/src/lib/billing"
 import { newRecord, runFilm } from "@/src/lib/studio/pipeline"
 import { allRecords, saveRecord, type FilmRecord } from "@/src/lib/studio/store"
+import { useWallet } from "@/src/lib/wallet-store"
 import { studioData } from "@/src/lib/studio/data"
 import { UI_STAGES, mapEventStage, stageProgress, type UiStage } from "@/src/lib/stage-map"
 import type { JobEvent } from "@/src/lib/studio/types"
@@ -81,20 +82,52 @@ function GoldButton({ label, disabled, onPress, icon }: { label: string; disable
   )
 }
 
-function ResumePrompt({ visible, onClose, onProgress }: { visible: boolean; onClose: () => void; onProgress: () => void }) {
+/**
+ * Recovery pass for records whose settle never landed: an errored film holding an open job, and
+ * a finished film whose settle failed (the job is still open even though the video is safe).
+ * `settle_pending === false` marks a record an earlier pass already closed; 409 means the server
+ * closed it (settled or produced) so retrying is pointless. Settles by explicit id and never
+ * adopts the job, so a film started while this runs keeps its own id and debit.
+ */
+async function settleStale(records: FilmRecord[]): Promise<void> {
+  const stale = records
+    .filter(
+      (r) =>
+        r.job_id &&
+        r.settle_pending !== false &&
+        (r.status === "error" || (r.status === "done" && Boolean(r.result?.video))),
+    )
+    .slice(0, 3)
+  for (const r of stale) {
+    try {
+      const s =
+        r.status === "done"
+          ? await settleJobById(r.job_id!, "done", r.result.video)
+          : await settleJobById(r.job_id!, "error")
+      if (s.ok) await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
+      else if (s.status === 409) await saveRecord({ ...r, settle_pending: false })
+      else await saveRecord({ ...r, settle_pending: true }).catch(() => {})
+    } catch {
+      await saveRecord({ ...r, settle_pending: true }).catch(() => {})
+    }
+  }
+}
+
+function ResumePrompt({ visible, onContinue, onCancel }: { visible: boolean; onContinue: () => void; onCancel: () => void }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onContinue}>
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
         <View className="w-full rounded-3xl bg-ticket p-6">
           <Text className="font-display text-xl text-ink">Welcome back</Text>
           <Text className="mt-2 text-[13px] leading-5 text-ink-soft">
-            Production may have paused while Storycast was in the background. Keep the app open until the film is ready.
+            Production may have paused while Storycast was in the background. Back to production picks the stages up again; keep the app
+            open until the film is ready.
           </Text>
           <View className="mt-5">
-            <GoldButton label="Back to production" onPress={onClose} />
+            <GoldButton label="Back to production" onPress={onContinue} />
           </View>
-          <Button variant="outline" className="mt-2 min-h-12 rounded-2xl" onPress={onProgress}>
-            <ButtonText>Check progress</ButtonText>
+          <Button variant="link" className="mt-1 min-h-12" onPress={onCancel}>
+            <ButtonText className="text-[15px] text-red-700">Cancel &amp; refund</ButtonText>
           </Button>
         </View>
       </View>
@@ -121,7 +154,7 @@ export default function MakeAFilmFlow() {
   const [record, setRecord] = useState<FilmRecord | null>(null)
   const [errorText, setErrorText] = useState("")
   const [refund, setRefund] = useState<number | null>(null)
-  const [credits, setCredits] = useState(WALLET.credits)
+  const { credits, maxMinutes, refresh } = useWallet()
   const [resumable, setResumable] = useState<FilmRecord | null>(null)
   const [away, setAway] = useState(false)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
@@ -132,9 +165,13 @@ export default function MakeAFilmFlow() {
   const [starting, setStarting] = useState(false)
   // Resume can be tapped twice from the compose card; only one finish may run.
   const resumingRef = useRef(false)
+  // Cancel can be tapped twice (progress button, resume prompt); only one refund may run.
+  const cancellingRef = useRef(false)
+  // A cancelled film's pipeline may still fail or finish: its result must not overwrite the refund screen.
+  const cancelledRef = useRef(false)
 
   const cost = creditsFor(minutes, resolution)
-  const canAfford = cost <= credits && minutes <= WALLET.maxMinutes
+  const canAfford = cost <= credits && minutes <= maxMinutes
   const narrator = useMemo(() => NARRATORS.find((n) => n.id === narratorId) ?? NARRATORS[0], [narratorId])
 
   // The pipeline forces `cast.style`, so the composer's look is whatever the narrator wears.
@@ -159,27 +196,13 @@ export default function MakeAFilmFlow() {
         await initBilling()
         const { device, idfv } = await ensureDeviceId()
         await ensureDevice(device, idfv)
-        setCredits((await wallet()).credits)
         const records = await allRecords()
         const running = records.find((r) => r.status === "running" && r.job_id && r.state?.plan)
         setResumable(running ?? null)
-        // A film whose finish failed may still hold an open job: settle it once, silently, so the
-        // ticket book matches the server on the next launch. `settle_pending === false` marks a
-        // record the settle pass already closed. Recovery settles by id and never adopts the job,
-        // so a film started while this runs keeps its own job id (and debit).
-        const stale = records.filter((r) => r.status === "error" && r.job_id && r.settle_pending !== false).slice(0, 3)
-        for (const r of stale) {
-          try {
-            const s = await settleJobById(r.job_id!, "error")
-            if (s.ok) await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
-            // 409 = the job is closed (already settled or already produced a film): stop retrying,
-            // but keep the refund note a previous pass wrote.
-            else if (s.status === 409) await saveRecord({ ...r, settle_pending: false })
-            else await saveRecord({ ...r, settle_pending: true }).catch(() => {})
-          } catch {
-            await saveRecord({ ...r, settle_pending: true }).catch(() => {})
-          }
-        }
+        // A film whose settle never landed may still hold an open job: close it once, silently, so
+        // the ticket book matches the server on the next launch (both errored and done-but-unsettled).
+        await settleStale(records)
+        await refresh()
       } catch {
         /* composer keeps the last known ticket count; a setup/network failure surfaces on the error screen */
       }
@@ -209,13 +232,23 @@ export default function MakeAFilmFlow() {
     // Never let a failed attempt fall back to the previous film's resume/refund state.
     setRecord(null)
     setNotice("")
+    cancelledRef.current = false
     try {
       const data = await studioData()
       const cast = data.characters.find((c) => c.id === narratorId)
       if (!cast) throw new Error("narrator unavailable")
       // The pipeline forces `cast.style`, so the look is the narrator's style — never a free pick.
       const style = data.styles.find((s) => s.id === cast.style) ?? data.styles[0]
-      const job = await startFilm(minutes, resolution)
+      let job: Awaited<ReturnType<typeof startFilm>>
+      try {
+        job = await startFilm(minutes, resolution)
+      } catch (e) {
+        if (!(e instanceof BillingError) || e.status !== 409) throw e
+        // 409 = a job of ours is still open (a crashed run kept its debit). Close stale records
+        // once, then retry a single time before surfacing the refusal.
+        await settleStale(await allRecords())
+        job = await startFilm(minutes, resolution)
+      }
       const rec = newRecord({
         topic: topic.trim(),
         style: style.id,
@@ -239,7 +272,7 @@ export default function MakeAFilmFlow() {
       setRefund(null)
       setErrorText("")
       setPhase("progress")
-      await finish(rec, job.cost)
+      await finish(rec)
     } catch (e) {
       if (e instanceof BillingError && (e.status === 402 || e.status === 422)) {
         setPhase("compose")
@@ -249,7 +282,7 @@ export default function MakeAFilmFlow() {
             : "Not enough tickets — top up or upgrade.",
         )
         // The server is authoritative: re-read the wallet so the composer's upsell copy matches.
-        setCredits((await wallet().catch(() => ({ credits: 0 }))).credits)
+        await refresh()
         return
       }
       setErrorText(String((e as Error).message ?? e))
@@ -273,24 +306,51 @@ export default function MakeAFilmFlow() {
     return s
   }
 
-  async function finish(rec: FilmRecord, spent: number) {
+  /** Stage rings only move forward; a late event from a slower branch must not rewind the UI. */
+  function advance(next: UiStage) {
+    setActiveStage((cur) => (UI_STAGES.indexOf(next) > UI_STAGES.indexOf(cur) ? next : cur))
+  }
+
+  async function finish(rec: FilmRecord) {
     try {
       const done = await runFilm(rec, (e: JobEvent) => {
         setLastEvent(e.msg)
         const ui = mapEventStage(e.stage)
-        if (ui && ui !== "done" && ui !== "error") setActiveStage(ui)
+        if (ui && ui !== "done" && ui !== "error") advance(ui)
       })
+      if (cancelledRef.current) return
       if (done.status !== "done" || !done.result.video) throw new Error(done.error || "the film could not be finished")
       const s = await settleWithRetry("done", done.result.video)
       setRecord(done)
-      if (s.ok) setCredits(s.creditsLeft ?? Math.max(0, credits - spent))
-      else setSettlePending(true)
+      if (!s.ok) setSettlePending(true)
+      // The server is authoritative for the ticket book: re-read it after every settle attempt.
+      await refresh()
       setPhase("result")
     } catch (e) {
+      if (cancelledRef.current) return
       const s = await settleWithRetry("error")
       setRefund(s.ok ? s.refund ?? 0 : null)
       setErrorText(String((e as Error).message ?? e))
+      await refresh()
       setPhase("error")
+    }
+  }
+
+  /** Cancel from the progress screen: refund the open job, then let the error copy render it. */
+  async function cancelFilm() {
+    if (cancellingRef.current) return
+    cancellingRef.current = true
+    cancelledRef.current = true
+    setShowResumePrompt(false)
+    setRefund(null)
+    setErrorText("You stopped this film before it finished.")
+    try {
+      const s = await settleWithRetry("error")
+      setRefund(s.ok ? s.refund ?? 0 : null)
+      await refresh()
+      setPhase("error")
+    } finally {
+      cancellingRef.current = false
     }
   }
 
@@ -298,6 +358,7 @@ export default function MakeAFilmFlow() {
     if (resumingRef.current) return
     resumingRef.current = true
     try {
+      cancelledRef.current = false
       if (rec.job_id) adoptJob(rec.job_id)
       setRecord(rec)
       setResumable(null)
@@ -307,7 +368,7 @@ export default function MakeAFilmFlow() {
       setLastEvent("")
       setActiveStage("script")
       setPhase("progress")
-      await finish(rec, 0)
+      await finish(rec)
     } finally {
       resumingRef.current = false
     }
@@ -510,11 +571,11 @@ export default function MakeAFilmFlow() {
                 <Eyebrow tone="soft">Show settings</Eyebrow>
                 <HStack className="mt-3 justify-between">
                   <Text className="text-[15px] font-body-bold text-ink">Length</Text>
-                  <Text className="text-xs text-ink-soft">up to {WALLET.maxMinutes} min on your plan</Text>
+                  <Text className="text-xs text-ink-soft">up to {maxMinutes} min on your plan</Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {[1, 2, 3, 4, 5].map((m) => {
-                    const disabled = m > WALLET.maxMinutes
+                    const disabled = m > maxMinutes
                     const active = m === minutes
                     return (
                       <Pressable
@@ -531,7 +592,7 @@ export default function MakeAFilmFlow() {
                 <View className="my-3 h-px bg-ink/10" />
                 <HStack className="justify-between">
                   <Text className="text-[15px] font-body-bold text-ink">Picture</Text>
-                  <Text className="text-xs text-ink-soft">sharper costs double</Text>
+                  <Text className={`text-xs ${credits >= creditsFor(minutes, "768P") ? "text-ink-soft" : "font-body-bold text-coral"}`}>Sharper costs 2 tickets</Text>
                 </HStack>
                 <HStack space="xs" className="mt-2">
                   {(["480P", "768P"] as Resolution[]).map((r) => {
@@ -562,7 +623,7 @@ export default function MakeAFilmFlow() {
                       {notice ||
                         (canAfford
                           ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
-                          : minutes > WALLET.maxMinutes
+                          : minutes > maxMinutes
                             ? "Longer shows need a Family ticket book."
                             : "Your book is short a ticket — top it up to start.")}
                     </Text>
@@ -691,15 +752,6 @@ export default function MakeAFilmFlow() {
             </View>
           </View>
         </Modal>
-
-        <ResumePrompt
-          visible={showResumePrompt}
-          onClose={() => setShowResumePrompt(false)}
-          onProgress={() => {
-            setShowResumePrompt(false)
-            setPhase("progress")
-          }}
-        />
 
         <View className="absolute bottom-0 left-0 right-0 border-t border-ink/10 bg-paper px-5 pb-8 pt-3">
           <GoldButton
@@ -873,13 +925,21 @@ export default function MakeAFilmFlow() {
                 Keep Storycast open — production pauses if the app goes to the background.
               </Text>
             </View>
+
+            <Button variant="link" className="mt-4 min-h-12" onPress={() => void cancelFilm()}>
+              <ButtonText className="text-[15px] text-ticket/70">Cancel film</ButtonText>
+            </Button>
           </View>
         </ScrollView>
 
         <ResumePrompt
           visible={showResumePrompt}
-          onClose={() => setShowResumePrompt(false)}
-          onProgress={() => setShowResumePrompt(false)}
+          onContinue={() => {
+            // Back to production: the modal closes and the running job stays adopted.
+            if (record?.job_id) adoptJob(record.job_id)
+            setShowResumePrompt(false)
+          }}
+          onCancel={() => void cancelFilm()}
         />
       </LinearGradient>
     )

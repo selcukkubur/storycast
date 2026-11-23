@@ -19,6 +19,7 @@ export function recordToFilm(rec: FilmRecord): Film | null {
     video: r.video,
     topic: rec.topic ?? "",
     lang: rec.lang ?? "en",
+    resolution: rec.resolution === "768P" ? "768P" : "480P",
   };
 }
 

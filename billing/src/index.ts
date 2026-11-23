@@ -367,7 +367,9 @@ export function createApp(deps: Deps = {}) {
 
         if (req.method === "POST" && path === "/dev/credits") {
           const devToken = deps.devToken ?? env.DEV_CREDITS_TOKEN;
-          if (!devToken || req.headers.get("x-dev-token") !== devToken) throw new HttpError(404, "not found");
+          // Staging-only: a deployed (production) worker 404s even if a token leaked into its env.
+          const production = env.APPLE_ENVIRONMENT === "production";
+          if (!devToken || production || req.headers.get("x-dev-token") !== devToken) throw new HttpError(404, "not found");
           const account = await authenticate(env, req);
           const b = await body(req);
           const credits = Math.min(10, Math.max(1, Math.round(num(b.credits))));

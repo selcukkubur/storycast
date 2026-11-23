@@ -6,7 +6,8 @@ import { Bell, ChevronRight, HelpCircle, Ticket, Users } from "lucide-react-nati
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
-import { LEDGER, WALLET } from "@/src/flows/shared/mock-data"
+import { LEDGER } from "@/src/flows/shared/mock-data"
+import { useWallet } from "@/src/lib/wallet-store"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
@@ -19,6 +20,8 @@ const CARD_SHADOW = {
 } as const
 
 export default function AccountScreen() {
+  // The activity list is still sample data; the balance is not.
+  const { credits } = useWallet()
   return (
     <View className="flex-1 bg-paper">
       <ScrollView contentContainerClassName="pb-10">
@@ -31,10 +34,10 @@ export default function AccountScreen() {
           <View className="absolute -right-10 top-8 h-40 w-40 rounded-full border border-marigold/20" />
           <Text className={`${EYEBROW} text-marigold`}>Your ticket book</Text>
           <HStack space="sm" className="mt-1 items-baseline">
-            <Text className="font-display text-[56px] leading-[60px] text-ticket">{WALLET.credits}</Text>
+            <Text className="font-display text-[56px] leading-[60px] text-ticket">{credits}</Text>
             <Text className="text-[15px] text-ticket/85">tickets left</Text>
           </HStack>
-          <Text className="mt-1 text-[13px] leading-5 text-ticket/85">{WALLET.rolloverNote}</Text>
+          <Text className="mt-1 text-[13px] leading-5 text-ticket/85">Unused tickets roll over one month, up to 6.</Text>
         </LinearGradient>
 
         <Animated.View entering={FadeInDown.duration(420)}>
