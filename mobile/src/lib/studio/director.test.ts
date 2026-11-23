@@ -1,14 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-
-// `director` -> `fal` -> `billing` pulls in native expo modules; node-only vitest
-// cannot load them, so stub them the same way `billing.test.ts` does.
-vi.mock("expo-secure-store", () => ({
-  getItemAsync: async () => null,
-  setItemAsync: async () => {},
-  deleteItemAsync: async () => {},
-}));
-vi.mock("expo-application", () => ({ getIosIdForVendorAsync: async () => "idfv-test" }));
-vi.mock("expo-crypto", () => ({ randomUUID: () => "device-uuid-test" }));
+import { describe, expect, it } from "vitest";
 
 import { DIRECTOR_MODEL, shape, words } from "./director";
 

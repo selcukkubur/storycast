@@ -1,24 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const secure = new Map<string, string>();
-vi.mock("expo-secure-store", () => ({
-  getItemAsync: async (k: string) => secure.get(k) ?? null,
-  setItemAsync: async (k: string, v: string) => void secure.set(k, v),
-  deleteItemAsync: async (k: string) => void secure.delete(k),
-}));
-vi.mock("expo-application", () => ({ getIosIdForVendorAsync: async () => "idfv-test" }));
-vi.mock("expo-crypto", () => ({ randomUUID: () => "device-uuid-test" }));
-
+// The native expo modules are aliased to the node stub in `vitest.config.ts`; its
+// store is shared across tests in this file, so each test starts empty.
+import { memory } from "../../test/stubs/expo";
 import { billingActive, billingRun, devTopUp, ensureDevice, initBilling, settleFilm, startFilm } from "./billing";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 beforeEach(() => {
-  secure.clear();
+  memory.clear();
   vi.unstubAllGlobals();
   vi.resetModules();
   process.env.EXPO_PUBLIC_BILLING_API = "https://billing.test";
 });
+
 
 describe("billing client", () => {
   it("registers a device once and keeps the token", async () => {
