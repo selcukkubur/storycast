@@ -45,9 +45,8 @@ vi.mock("./director", () => ({
   translate: vi.fn(async (t: string) => t),
 }));
 
-vi.mock("expo-asset", () => ({ Asset: { fromModule: () => ({ downloadAsync: async () => {}, localUri: "file:///wm.png", uri: "file:///wm.png" }) } }));
-
 import { newRecord, runFilm } from "./pipeline";
+import { upload } from "./fal";
 import { configureStore } from "./store";
 
 const memory = new Map<string, string>();
@@ -69,6 +68,7 @@ const input = {
 beforeEach(() => {
   calls.length = 0;
   memory.clear();
+  vi.mocked(upload).mockClear();
 });
 
 describe("pipeline", () => {
@@ -80,15 +80,24 @@ describe("pipeline", () => {
     expect(done.result.video).toMatch(/^https:\/\/fal\.media\//);
     expect(events).toContain("shots");
     expect(events).toContain("subtitles");
+    const merge = calls.filter((c) => c.app.includes("merge-videos")).at(-1)!;
+    expect(done.state.watermark_clip).toBeUndefined();
+    expect(merge.input.video_urls.at(-1)).toBe(done.state.card_clip);
+    expect(calls.filter((c) => c.app.includes("images-to-video"))).toHaveLength(1);
+    expect(upload).not.toHaveBeenCalled();
   });
 
   it("appends the watermark clip before the end card only for trial jobs", async () => {
     const rec = newRecord(input);
     rec.watermark = true;
-    await runFilm(rec, () => {});
+    const done = await runFilm(rec, () => {});
     const merge = calls.filter((c) => c.app.includes("merge-videos")).at(-1)!;
     const stills = calls.filter((c) => c.app.includes("images-to-video"));
     expect(stills.length).toBe(2); // end card + watermark seal
     expect(merge.input.video_urls.length).toBeGreaterThanOrEqual(3); // cut + seal + card
+    const urls = merge.input.video_urls;
+    expect(urls.slice(-2)).toEqual([done.state.watermark_clip, done.state.card_clip]);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledWith({ uri: "file:///wm.png", name: "watermark.png", type: "image/png" });
   });
 });

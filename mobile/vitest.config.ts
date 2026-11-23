@@ -12,6 +12,7 @@ export default defineConfig({
       "expo-secure-store": expo,
       "expo-application": expo,
       "expo-crypto": expo,
+      "expo-asset": expo,
     },
   },
 });

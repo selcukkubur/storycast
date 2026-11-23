@@ -27,3 +27,9 @@ export async function getIosIdForVendorAsync(): Promise<string> {
 export function randomUUID(): string {
   return "device-uuid-test";
 }
+
+/** `expo-asset` stand-in: the watermark PNG never downloads under node, so both
+ *  `localUri` and `uri` point at a stable fake file url. */
+export const Asset = {
+  fromModule: () => ({ downloadAsync: async () => {}, localUri: "file:///wm.png", uri: "file:///wm.png" }),
+};

@@ -1,4 +1,5 @@
 import { Asset } from "expo-asset";
+import { randomUUID } from "expo-crypto";
 import type { JobEvent, Plan as EventPlan } from "./types";
 import { studioData, type CastFull, type StyleFull } from "./data";
 import * as director from "./director";
@@ -150,7 +151,7 @@ export function characterPrompts(line: string, anchor: string): [string, string]
 }
 
 export function newRecord(input: JobInput): FilmRecord {
-  const id = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const id = randomUUID().replace(/-/g, "").slice(0, 8);
   return {
     ...input,
     id,
@@ -536,7 +537,7 @@ export class Film {
   }
 
   filmLength() {
-    return LEAD + sum(this.plan.blocks.map((b) => b.audio_dur! + GAP)) + TAIL_DUR + END_CARD;
+    return LEAD + sum(this.plan.blocks.map((b) => b.audio_dur! + GAP)) + TAIL_DUR + END_CARD + (this.rec.watermark ? 2 : 0);
   }
 
   async music() {
@@ -629,7 +630,8 @@ export class Film {
     const p = this.plan;
     for (const b of p.blocks) if (!b.audio_url || !(b.audio_dur! > 0)) await this.tts(b, true);
     const { starts, segments, pictureEnd } = this.timeline();
-    const total = pictureEnd + END_CARD;
+    const sealSeconds = this.rec.watermark ? 2 : 0;
+    const total = pictureEnd + END_CARD + sealSeconds;
     this.log("assemble", `Cutting ${segments.length} shots on fal (trim + merge + compose)…`);
     const cut = await Promise.all(segments.map((s) => this.trimmed(s)));
 
