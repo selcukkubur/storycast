@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Image, Pressable, ScrollView, View } from "react-native"
+import { ActivityIndicator, Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated"
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
@@ -62,18 +62,16 @@ export default function WatchFlow() {
   const all = useMemo(() => [...(mine ?? []), ...FILMS], [mine])
   const deepId = paramId && all.some((f) => f.id === paramId) ? paramId : undefined
 
-  const [step, setStep] = useState<Step>(deepId ? "player" : "library")
-  const [filmId, setFilmId] = useState(deepId ?? FILMS[0].id)
-  const [deepHandled, setDeepHandled] = useState(Boolean(deepId))
+  /* Navigation is derived, not promoted after paint: the override wins, otherwise a
+     resolved deep link opens the player and anything else lands on the library. */
+  const [stepOverride, setStepOverride] = useState<Step | null>(null)
+  const [filmId, setFilmId] = useState<string | null>(null)
+  const active: Step = stepOverride ?? (deepId ? "player" : "library")
 
-  useEffect(() => {
-    if (deepHandled || !deepId) return
-    setFilmId(deepId)
-    setStep("player")
-    setDeepHandled(true)
-  }, [deepId, deepHandled])
-
-  const film = useMemo(() => all.find((f) => f.id === filmId) ?? all[0], [all, filmId])
+  const film = useMemo(() => {
+    const id = filmId ?? deepId ?? FILMS[0].id
+    return all.find((f) => f.id === id) ?? all[0]
+  }, [all, filmId, deepId])
   const upNext = useMemo(() => all.filter((f) => f.id !== film.id).slice(0, 6), [all, film.id])
 
   const player = useVideoPlayer(film.video)
@@ -83,20 +81,27 @@ export default function WatchFlow() {
   }, [film.id])
 
   useEffect(() => {
-    if (step === "player") player.play()
+    if (active === "player") player.play()
     else player.pause()
-  }, [step, film.id])
+  }, [active, film.id])
 
   const openFilm = (id: string) => {
     setFilmId(id)
-    setStep("player")
+    setStepOverride("player")
   }
 
-  /* Deep-linked id may belong to a generated film that is still loading. */
-  if (paramId && mine === null) return null
+  /* A deep link may point at a generated film that is still loading from storage. */
+  const waitingOnDeepLink = mine === null && Boolean(paramId) && !FILMS.some((f) => f.id === paramId)
+  if (waitingOnDeepLink) {
+    return (
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: INK }}>
+        <ActivityIndicator color={MARIGOLD} />
+      </View>
+    )
+  }
 
-  /* SCREEN 1 — Library (via back / direct route) */
-  if (step === "library") {
+  /* SCREEN 1 — Library (via back / direct route / unknown deep link) */
+  if (active === "library") {
     return (
       <View className="flex-1" style={{ backgroundColor: INK }}>
         <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
@@ -155,7 +160,7 @@ export default function WatchFlow() {
   }
 
   /* SCREEN 2 — Player (real video via expo-video) */
-  if (step === "player") {
+  if (active === "player") {
     return (
       <View className="flex-1" style={{ backgroundColor: INK }}>
         <ScrollView contentContainerClassName="pb-10" showsVerticalScrollIndicator={false}>
@@ -169,7 +174,7 @@ export default function WatchFlow() {
               />
               <View style={{ paddingTop: insets.top + 8 }} className="absolute left-4 right-4 flex-row items-center justify-between">
                 <Pressable
-                  onPress={() => (deepId ? router.back() : setStep("library"))}
+                  onPress={() => (deepId ? router.back() : setStepOverride("library"))}
                   className="h-11 w-11 items-center justify-center rounded-full bg-black/40"
                   accessibilityRole="button"
                   accessibilityLabel="Back"
@@ -177,7 +182,7 @@ export default function WatchFlow() {
                   <ChevronLeft size={20} stroke="#FFF9F0" />
                 </Pressable>
                 <Pressable
-                  onPress={() => setStep("share")}
+                  onPress={() => setStepOverride("share")}
                   className="h-11 w-11 items-center justify-center rounded-full bg-black/40"
                   accessibilityRole="button"
                   accessibilityLabel="Share film"
@@ -239,7 +244,7 @@ export default function WatchFlow() {
 
               <HStack space="sm" className="mt-5">
                 <Pressable
-                  onPress={() => setStep("share")}
+                  onPress={() => setStepOverride("share")}
                   className="min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 active:bg-white/10"
                   accessibilityRole="button"
                 >
@@ -296,7 +301,7 @@ export default function WatchFlow() {
                 {film.title} {film.subtitle}
               </Text>
             </VStack>
-            <Pressable onPress={() => setStep("player")} className="h-11 w-11 items-center justify-center rounded-full bg-white/10" accessibilityRole="button" accessibilityLabel="Close">
+            <Pressable onPress={() => setStepOverride("player")} className="h-11 w-11 items-center justify-center rounded-full bg-white/10" accessibilityRole="button" accessibilityLabel="Close">
               <X size={16} stroke="#FFF9F0" />
             </Pressable>
           </HStack>
