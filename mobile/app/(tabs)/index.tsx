@@ -1,15 +1,16 @@
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Dimensions, Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown } from "react-native-reanimated"
-import { router } from "expo-router"
+import { router, useFocusEffect } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Grid2x2, List, Play, Sparkles, Ticket } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { FILMS, WALLET } from "@/src/flows/shared/mock-data"
-import type { FilmCategory } from "@/src/flows/shared/types"
+import { generatedFilms } from "@/src/lib/generated"
+import type { Film, FilmCategory } from "@/src/flows/shared/types"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const CARD_SHADOW = {
@@ -23,10 +24,11 @@ const CARD_SHADOW = {
 const { width: SW } = Dimensions.get("window")
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 
-type FilterKey = "all" | "new" | FilmCategory
+type FilterKey = "all" | "new" | "mine" | FilmCategory
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
+  { key: "mine", label: "Made here" },
   { key: "nature", label: "Nature" },
   { key: "science", label: "Science" },
   { key: "history", label: "History" },
@@ -59,15 +61,38 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const [filter, setFilter] = useState<FilterKey>("all")
   const [listMode, setListMode] = useState(false)
+  const [mine, setMine] = useState<Film[]>([])
 
-  const hero = FILMS[0]
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true
+      generatedFilms()
+        .then((films) => {
+          if (alive) setMine(films)
+        })
+        .catch(() => {})
+      return () => {
+        alive = false
+      }
+    }, []),
+  )
+
+  const all = useMemo(() => [...mine, ...FILMS], [mine])
+  const hero = all[0]
   const shown = useMemo(() => {
-    if (filter === "all") return FILMS
-    if (filter === "new") return FILMS.filter((f) => !f.watched)
-    return FILMS.filter((f) => f.category === filter)
-  }, [filter])
+    if (filter === "all") return all
+    if (filter === "new") return all.filter((f) => !f.watched)
+    if (filter === "mine") return all.filter((f) => f.generated)
+    return all.filter((f) => f.category === filter)
+  }, [all, filter])
   const countOf = (k: FilterKey) =>
-    k === "all" ? FILMS.length : k === "new" ? FILMS.filter((f) => !f.watched).length : FILMS.filter((f) => f.category === k).length
+    k === "all"
+      ? all.length
+      : k === "new"
+        ? all.filter((f) => !f.watched).length
+        : k === "mine"
+          ? mine.length
+          : all.filter((f) => f.category === k).length
 
   const heroImageHeight = Math.round((SW * 9) / 16)
 
@@ -104,9 +129,9 @@ export default function HomeScreen() {
           <View className="px-5 pb-14 pt-4">
             <HStack space="xs" className="items-center">
               <Text className={`${EYEBROW} text-marigold`}>Tonight's feature</Text>
-              {!hero.watched ? (
+              {hero.generated || !hero.watched ? (
                 <View className="-rotate-2 rounded-md bg-coral px-1.5 py-0.5">
-                  <Text className={`${EYEBROW} text-ticket`}>New</Text>
+                  <Text className={`${EYEBROW} text-ticket`}>{hero.generated ? "Yours" : "New"}</Text>
                 </View>
               ) : null}
             </HStack>
@@ -282,7 +307,11 @@ export default function HomeScreen() {
                             style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 34 }}
                           />
                           <Text className="absolute bottom-1.5 right-2 text-[11px] font-body-bold text-ticket">{clock(f.durationSec)}</Text>
-                          {!f.watched ? (
+                          {f.generated ? (
+                            <View className="absolute left-1.5 top-1.5 rounded bg-coral px-1.5 py-0.5">
+                              <Text className="text-[10px] font-body-bold uppercase tracking-[0.5px] text-ticket">Yours</Text>
+                            </View>
+                          ) : !f.watched ? (
                             <View className="absolute left-1.5 top-1.5 rounded bg-marigold px-1.5 py-0.5">
                               <Text className="text-[10px] font-body-bold uppercase tracking-[0.5px] text-ink">New</Text>
                             </View>

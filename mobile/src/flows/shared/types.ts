@@ -23,7 +23,8 @@ export type Film = {
   durationSec: number
   created: string
   watched: boolean
-  category: FilmCategory
+  category?: FilmCategory
+  generated?: boolean
   poster: ImageSourcePropType
   video: string
   topic: string

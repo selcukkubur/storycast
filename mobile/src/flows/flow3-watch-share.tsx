@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Image, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated"
-import { router, useLocalSearchParams } from "expo-router"
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useVideoPlayer, VideoView } from "expo-video"
 import { ChevronLeft, Download, MessageCircle, RotateCcw, Share2, X } from "lucide-react-native"
@@ -10,6 +10,8 @@ import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
 import { Text } from "@/components/ui/text"
 import { FILMS } from "@/src/flows/shared/mock-data"
+import type { Film } from "@/src/flows/shared/types"
+import { generatedFilms } from "@/src/lib/generated"
 import { languageOf } from "@/src/flows/shared/languages"
 
 type Step = "library" | "player" | "share"
@@ -37,13 +39,42 @@ function Chip({ label }: { label: string }) {
 export default function WatchFlow() {
   const insets = useSafeAreaInsets()
   const params = useLocalSearchParams<{ id?: string }>()
-  const deepId = typeof params.id === "string" && FILMS.some((f) => f.id === params.id) ? params.id : undefined
+  const paramId = typeof params.id === "string" ? params.id : undefined
+
+  const [mine, setMine] = useState<Film[] | null>(null)
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true
+      generatedFilms()
+        .then((films) => {
+          if (alive) setMine(films)
+        })
+        .catch(() => {
+          if (alive) setMine([])
+        })
+      return () => {
+        alive = false
+      }
+    }, []),
+  )
+
+  const all = useMemo(() => [...(mine ?? []), ...FILMS], [mine])
+  const deepId = paramId && all.some((f) => f.id === paramId) ? paramId : undefined
 
   const [step, setStep] = useState<Step>(deepId ? "player" : "library")
   const [filmId, setFilmId] = useState(deepId ?? FILMS[0].id)
+  const [deepHandled, setDeepHandled] = useState(Boolean(deepId))
 
-  const film = useMemo(() => FILMS.find((f) => f.id === filmId) ?? FILMS[0], [filmId])
-  const upNext = useMemo(() => FILMS.filter((f) => f.id !== film.id).slice(0, 6), [film.id])
+  useEffect(() => {
+    if (deepHandled || !deepId) return
+    setFilmId(deepId)
+    setStep("player")
+    setDeepHandled(true)
+  }, [deepId, deepHandled])
+
+  const film = useMemo(() => all.find((f) => f.id === filmId) ?? all[0], [all, filmId])
+  const upNext = useMemo(() => all.filter((f) => f.id !== film.id).slice(0, 6), [all, film.id])
 
   const player = useVideoPlayer(film.video)
 
@@ -60,6 +91,9 @@ export default function WatchFlow() {
     setFilmId(id)
     setStep("player")
   }
+
+  /* Deep-linked id may belong to a generated film that is still loading. */
+  if (paramId && mine === null) return null
 
   /* SCREEN 1 — Library (via back / direct route) */
   if (step === "library") {
@@ -81,12 +115,12 @@ export default function WatchFlow() {
                 <X size={18} stroke="#FFF9F0" />
               </Pressable>
             </HStack>
-            <Text className="mt-1 text-[13px] text-ticket/70">{FILMS.length} films made in this house</Text>
+            <Text className="mt-1 text-[13px] text-ticket/70">{all.length} films made in this house</Text>
           </View>
 
           <View className="px-5">
             <View className="flex-row flex-wrap" style={{ gap: 12, rowGap: 16 }}>
-              {FILMS.map((f) => (
+              {all.map((f) => (
                 <Pressable
                   key={f.id}
                   onPress={() => openFilm(f.id)}
