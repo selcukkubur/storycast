@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { AppState, FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
@@ -11,13 +11,13 @@ import { Button, ButtonText } from "@/components/ui/button"
 import { InputField } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { router } from "expo-router"
-import { NARRATORS, LOOKS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
+import { NARRATORS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
 import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
 import { VOICES, voiceOf } from "@/src/flows/shared/voices"
 import { creditsFor, type Resolution } from "@/src/flows/shared/types"
 import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, startFilm, wallet, BillingError } from "@/src/lib/billing"
 import { newRecord, runFilm } from "@/src/lib/studio/pipeline"
-import { allRecords, type FilmRecord } from "@/src/lib/studio/store"
+import { allRecords, saveRecord, type FilmRecord } from "@/src/lib/studio/store"
 import { studioData } from "@/src/lib/studio/data"
 import { UI_STAGES, mapEventStage, stageProgress, type UiStage } from "@/src/lib/stage-map"
 import type { JobEvent } from "@/src/lib/studio/types"
@@ -106,7 +106,7 @@ export default function MakeAFilmFlow() {
   const [phase, setPhase] = useState<Phase>("compose")
   const [topic, setTopic] = useState("")
   const [narratorId, setNarratorId] = useState(NARRATORS[0].id)
-  const [look, setLook] = useState(LOOKS[0])
+  const [castStyle, setCastStyle] = useState("")
   const [minutes, setMinutes] = useState(1)
   const [resolution, setResolution] = useState<Resolution>("480P")
   const [langCode, setLangCode] = useState("en")
@@ -126,12 +126,23 @@ export default function MakeAFilmFlow() {
   const [away, setAway] = useState(false)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [settlePending, setSettlePending] = useState(false)
+  /** Server-side refusal (402/422) copy shown in the composer's upsell note. */
+  const [notice, setNotice] = useState("")
   // One server debit per gate: produce() keeps the gate visible until startFilm answers.
   const [starting, setStarting] = useState(false)
+  // Resume can be tapped twice from the compose card; only one finish may run.
+  const resumingRef = useRef(false)
 
   const cost = creditsFor(minutes, resolution)
   const canAfford = cost <= credits && minutes <= WALLET.maxMinutes
   const narrator = useMemo(() => NARRATORS.find((n) => n.id === narratorId) ?? NARRATORS[0], [narratorId])
+
+  // The pipeline forces `cast.style`, so the composer's look is whatever the narrator wears.
+  useEffect(() => {
+    void studioData()
+      .then((d) => setCastStyle(d.characters.find((c) => c.id === narratorId)?.style_label ?? ""))
+      .catch(() => {})
+  }, [narratorId])
 
   // Hooks must run on every render, so the player is hoisted above the phase returns.
   const videoUrl: string = record?.result?.video ?? FILMS[0].video
@@ -149,13 +160,36 @@ export default function MakeAFilmFlow() {
         const { device, idfv } = await ensureDeviceId()
         await ensureDevice(device, idfv)
         setCredits((await wallet()).credits)
-        const running = (await allRecords()).find((r) => r.status === "running" && r.job_id && r.state?.plan)
+        const records = await allRecords()
+        const running = records.find((r) => r.status === "running" && r.job_id && r.state?.plan)
         setResumable(running ?? null)
+        // A film whose finish failed may still hold an open job: settle it once, silently, so the
+        // ticket book matches the server on the next launch. `settle_pending === false` marks a
+        // record the settle pass already closed.
+        const stale = records.filter((r) => r.status === "error" && r.job_id && r.settle_pending !== false).slice(0, 3)
+        for (const r of stale) {
+          if (!r.job_id) continue
+          try {
+            adoptJob(r.job_id)
+            const s = await settleFilm("error")
+            if (!s.ok) throw new Error("settle failed")
+            await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
+          } catch {
+            await saveRecord({ ...r, settle_pending: true }).catch(() => {})
+          }
+        }
       } catch {
         /* composer keeps the last known ticket count; a setup/network failure surfaces on the error screen */
       }
     })()
   }, [])
+
+  // Leaving production always drops the background prompt, whatever the reason.
+  useEffect(() => {
+    if (phase === "progress") return
+    setShowResumePrompt(false)
+    setAway(false)
+  }, [phase])
 
   useEffect(() => {
     if (phase !== "progress") return
@@ -170,11 +204,15 @@ export default function MakeAFilmFlow() {
   }, [phase, away])
 
   async function produce() {
+    // Never let a failed attempt fall back to the previous film's resume/refund state.
+    setRecord(null)
+    setNotice("")
     try {
       const data = await studioData()
       const cast = data.characters.find((c) => c.id === narratorId)
       if (!cast) throw new Error("narrator unavailable")
-      const style = data.styles.find((s) => s.label === look) ?? data.styles[0]
+      // The pipeline forces `cast.style`, so the look is the narrator's style — never a free pick.
+      const style = data.styles.find((s) => s.id === cast.style) ?? data.styles[0]
       const job = await startFilm(minutes, resolution)
       const rec = newRecord({
         topic: topic.trim(),
@@ -185,9 +223,11 @@ export default function MakeAFilmFlow() {
         character_url: "",
         character_name: "",
         character_id: cast.id,
-        voice: cast.voice,
+        // The curated pick overrides the cast voice; the pipeline honours a provided voice_id.
+        voice: { ...cast.voice, voice_id: voiceId, name: voiceOf(voiceId).name },
         resolution,
       })
+      rec.style_label = style.label
       rec.watermark = job.watermark
       rec.job_id = job.jobId
       setRecord(rec)
@@ -201,6 +241,11 @@ export default function MakeAFilmFlow() {
     } catch (e) {
       if (e instanceof BillingError && (e.status === 402 || e.status === 422)) {
         setPhase("compose")
+        setNotice(
+          e.status === 422
+            ? "This length or picture needs a bigger plan — see Family."
+            : "Not enough tickets — top up or upgrade.",
+        )
         // The server is authoritative: re-read the wallet so the composer's upsell copy matches.
         setCredits((await wallet().catch(() => ({ credits: 0 }))).credits)
         return
@@ -245,14 +290,22 @@ export default function MakeAFilmFlow() {
   }
 
   async function resume(rec: FilmRecord) {
-    if (rec.job_id) adoptJob(rec.job_id)
-    setRecord(rec)
-    setResumable(null)
-    setSettlePending(false)
-    setRefund(null)
-    setErrorText("")
-    setPhase("progress")
-    await finish(rec, 0)
+    if (resumingRef.current) return
+    resumingRef.current = true
+    try {
+      if (rec.job_id) adoptJob(rec.job_id)
+      setRecord(rec)
+      setResumable(null)
+      setSettlePending(false)
+      setRefund(null)
+      setErrorText("")
+      setLastEvent("")
+      setActiveStage("script")
+      setPhase("progress")
+      await finish(rec, 0)
+    } finally {
+      resumingRef.current = false
+    }
   }
 
   const title = topic.trim() || record?.topic || "Your first story"
@@ -356,10 +409,7 @@ export default function MakeAFilmFlow() {
                       return (
                         <Pressable
                           key={n.id}
-                          onPress={() => {
-                            setNarratorId(n.id)
-                            setLook(n.look)
-                          }}
+                          onPress={() => setNarratorId(n.id)}
                           className="w-32"
                           accessibilityRole="button"
                           accessibilityState={{ selected }}
@@ -401,21 +451,6 @@ export default function MakeAFilmFlow() {
               </VStack>
 
               <VStack space="sm">
-                <Eyebrow tone="soft">Art style</Eyebrow>
-                <HStack space="sm" className="flex-wrap">
-                  {LOOKS.map((l) => (
-                    <Pressable
-                      key={l}
-                      onPress={() => setLook(l)}
-                      className={`min-h-11 justify-center rounded-full px-4 ${l === look ? "bg-royal" : "border border-ink/20 bg-ticket"}`}
-                    >
-                      <Text className={`text-sm ${l === look ? "font-body-semibold text-ticket" : "text-ink"}`}>{l}</Text>
-                    </Pressable>
-                  ))}
-                </HStack>
-              </VStack>
-
-              <VStack space="sm">
                 <Eyebrow tone="soft">Narration</Eyebrow>
                 <View className="overflow-hidden rounded-3xl bg-ticket" style={CARD_SHADOW}>
                   <Pressable
@@ -453,6 +488,16 @@ export default function MakeAFilmFlow() {
                     </HStack>
                     <ChevronRight size={16} stroke="#5A4F66" />
                   </Pressable>
+                  <View className="h-px bg-ink/10" />
+                  <View className="p-4">
+                    <HStack className="items-center justify-between">
+                      <Text className="text-[15px] font-body-bold text-ink">Look</Text>
+                      <Text className="text-[15px] font-body-semibold text-ink">{castStyle || narrator.look}</Text>
+                    </HStack>
+                    <Text className="mt-1 text-xs leading-4 text-ink-soft">
+                      Styles follow the narrator — pick another narrator for a different look.
+                    </Text>
+                  </View>
                 </View>
               </VStack>
 
@@ -508,12 +553,13 @@ export default function MakeAFilmFlow() {
                     <Text className="mt-2 font-display text-xl leading-6 text-ticket">
                       {minutes} min · {resolution.toLowerCase()} · {narrator.name}
                     </Text>
-                    <Text className="mt-1.5 text-[13px] leading-5 text-ticket/85">
-                      {canAfford
-                        ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
-                        : minutes > WALLET.maxMinutes
-                          ? "Longer shows need a Family ticket book."
-                          : "Your book is short a ticket — top it up to start."}
+                    <Text className={`mt-1.5 text-[13px] leading-5 ${notice ? "font-body-bold text-marigold" : "text-ticket/85"}`}>
+                      {notice ||
+                        (canAfford
+                          ? `${credits - cost} ticket${credits - cost === 1 ? "" : "s"} stay in your book after the show.`
+                          : minutes > WALLET.maxMinutes
+                            ? "Longer shows need a Family ticket book."
+                            : "Your book is short a ticket — top it up to start.")}
                     </Text>
                     <View className="mt-4 flex-row items-end gap-[3px]">
                       {[3, 7, 4, 9, 3, 6, 10, 4, 7, 3, 8, 5, 9, 3].map((h, i) => (
@@ -788,7 +834,7 @@ export default function MakeAFilmFlow() {
               </View>
               <VStack space="xs" className="flex-1">
                 <Text className={`${EYEBROW} text-marigold`}>Now: {meta.label}</Text>
-                <Text className="text-sm font-body-semibold text-ticket">{lastEvent || meta.line}</Text>
+                <Text className="text-sm font-body-semibold text-ticket" numberOfLines={2}>{lastEvent || meta.line}</Text>
               </VStack>
               <Spinner size="small" />
             </View>
@@ -843,6 +889,9 @@ export default function MakeAFilmFlow() {
      EXIT:   Try again → Composer; Resume → same job
      ================================================ */
   if (phase === "error") {
+    // The refund tells us which half of the lifecycle we are in: no answer from settle means the
+    // job may still be open (resume it); a settled refund means the job is closed (start over).
+    const canResume = refund === null && Boolean(record?.job_id)
     return (
       <View className="flex-1 justify-center bg-paper px-6">
         <View className="rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
@@ -851,17 +900,22 @@ export default function MakeAFilmFlow() {
           <Text className="mt-2 text-[13px] leading-5 text-ink-soft">{errorText}</Text>
           {refund !== null ? (
             <Text className="mt-2 text-[13px] font-body-bold text-mint">
-              {refund > 0 ? `${refund} ticket${refund === 1 ? "" : "s"} refunded to your book.` : "No tickets were used."}
+              {refund > 0
+                ? `${refund} ticket${refund === 1 ? "" : "s"} refunded`
+                : "This film was already closed — no tickets were charged twice."}
             </Text>
           ) : null}
           <View className="mt-5">
-            <GoldButton label="Try again" onPress={() => setPhase("compose")} />
+            {canResume ? (
+              <GoldButton
+                label="Resume film"
+                onPress={() => record && void resume(record)}
+                icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />}
+              />
+            ) : (
+              <GoldButton label="Try again" onPress={() => setPhase("compose")} />
+            )}
           </View>
-          {record?.job_id ? (
-            <Button variant="outline" className="mt-2 min-h-12 rounded-2xl" onPress={() => record && resume(record)}>
-              <ButtonText>Resume film</ButtonText>
-            </Button>
-          ) : null}
         </View>
       </View>
     );
@@ -875,6 +929,8 @@ export default function MakeAFilmFlow() {
      ENTRY:  Production completed
      EXIT:   Watch → player (Flow C); Make another → Composer
      ================================================ */
+  // A resumed or background-completed film may not match the composer's current settings.
+  const usedCost = creditsFor(record?.minutes ?? minutes, (record?.resolution as Resolution) ?? resolution)
   return (
     <ScrollView className="flex-1 bg-paper" contentContainerClassName="px-5 pb-10 pt-16">
       <Animated.View entering={FadeInDown.duration(450)}>
@@ -895,7 +951,7 @@ export default function MakeAFilmFlow() {
               {record?.result?.title || title}
             </Text>
             <Text className="text-xs text-ink-soft">
-              {record?.style_label ?? look} · {record?.minutes ?? minutes} min
+              {record?.style_label ?? (castStyle || narrator.look)} · {record?.minutes ?? minutes} min
             </Text>
           </VStack>
 
@@ -903,7 +959,7 @@ export default function MakeAFilmFlow() {
             <View className="flex-1 p-4">
               <Eyebrow tone="soft">Ticket used</Eyebrow>
               <Text className="mt-1.5 font-body-bold text-base text-ink">
-                {cost > 0 ? `${cost} ticket${cost === 1 ? "" : "s"} · ` : ""}
+                {usedCost > 0 ? `${usedCost} ticket${usedCost === 1 ? "" : "s"} · ` : ""}
                 {credits} left in your book
               </Text>
               {settlePending ? (
