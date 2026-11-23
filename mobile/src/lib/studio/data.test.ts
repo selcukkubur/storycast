@@ -8,6 +8,10 @@ describe("studioData", () => {
     expect(data.styles).toHaveLength(26);
     expect(data.languages).toHaveLength(74);
     expect(data.max_minutes).toBe(10);
+    expect(Object.keys(data.curated_voices).length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(data.cameras)).toBe(true);
+    expect(data.cameras.length).toBeGreaterThan(0);
+    for (const camera of data.cameras) expect(typeof camera).toBe("string");
   });
 
   it("every cast narrator the app shows has remote sheet and hero art", async () => {

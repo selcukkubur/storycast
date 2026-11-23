@@ -19,6 +19,8 @@ export type CastFull = {
   style_label: string;
   hero: string;
   sheet: string;
+  thumb?: string;
+  group?: string;
   voice: Voice;
 };
 
@@ -28,7 +30,7 @@ export type StyleFull = {
   ref: string;
   anchor: string;
   motion: string;
-  palette?: { accent?: string };
+  palette?: { bg?: string; text?: string; accent?: string };
   character_hint?: string;
   blurb?: string;
   category?: string;
@@ -42,6 +44,7 @@ export type StudioData = {
   styles: StyleFull[];
   languages: Language[];
   curated_voices: Record<string, string>;
+  cameras: string[];
   max_minutes: number;
 };
 
@@ -52,9 +55,11 @@ export async function studioData(): Promise<StudioData> {
     const c = config as unknown as StudioData;
     cached = {
       characters: c.characters,
-      styles: c.styles,
+      // the director does `d.palette ??= {...}` in place, so every style gets its own palette copy
+      styles: c.styles.map((s) => (s.palette ? { ...s, palette: { ...s.palette } } : { ...s })),
       languages: c.languages,
       curated_voices: c.curated_voices,
+      cameras: c.cameras,
       max_minutes: c.max_minutes,
     };
   }
