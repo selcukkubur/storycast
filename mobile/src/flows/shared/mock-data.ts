@@ -55,8 +55,6 @@ export const NARRATORS: Narrator[] = [
 
 export const TOPIC_CHIPS = ["Why is the sky blue?", "How do bees make honey?", "The first photograph", "How do volcanoes work?"]
 
-export const LOOKS = ["Stick figure", "Whiteboard doodle", "Watercolor anime", "Claymation", "Papercraft diorama"]
-
 export const FILMS: Film[] = [
   { id: "10a4f1dd", title: "Nib", subtitle: "and the stick inside the pencil", narrator: "Nib", styleLabel: "Claymation", durationSec: 63, created: "2 days ago", watched: false, category: "machines", poster: require("../../../assets/posters/10a4f1dd.jpg"), video: "https://v3b.fal.media/files/b/0aaba621/_AqZV1TbJ3YGAbtbXl1PO_output.mp4", topic: "How does the lead get inside a pencil?", lang: "en" },
   { id: "18d77a9d", title: "Kiko", subtitle: "and the secret life of lightning", narrator: "Kiko", styleLabel: "Watercolor anime", durationSec: 58, created: "2 days ago", watched: false, category: "science", poster: require("../../../assets/posters/18d77a9d.jpg"), video: "https://v3b.fal.media/files/b/0aaba0db/kTKIUqNrIko27IUiKLd9H_output.mp4", topic: "How does lightning happen?", lang: "en" },

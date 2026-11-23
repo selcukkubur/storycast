@@ -65,6 +65,8 @@ npx wrangler deploy
 
 Point the App Store Server Notifications URL at `https://<worker-host>/apple/notifications` (Sandbox and Production).
 
+Never set DEV_CREDITS_TOKEN in a deployed environment — the endpoint is staging-only.
+
 ## Launch gate
 
 Subscriptions go live only when COGS <= $2.75 per 480P minute (spec section 4).

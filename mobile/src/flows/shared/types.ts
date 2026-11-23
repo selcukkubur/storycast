@@ -23,43 +23,14 @@ export type Film = {
   durationSec: number
   created: string
   watched: boolean
-  category: FilmCategory
+  category?: FilmCategory
+  generated?: boolean
   poster: ImageSourcePropType
   video: string
   topic: string
   lang: string
-}
-
-export type JobStage =
-  | "script"
-  | "character"
-  | "voice"
-  | "keyframes"
-  | "shots"
-  | "score"
-  | "edit"
-  | "subtitles"
-
-export const STAGE_ORDER: JobStage[] = [
-  "script",
-  "character",
-  "voice",
-  "keyframes",
-  "shots",
-  "score",
-  "edit",
-  "subtitles",
-]
-
-export const STAGE_LABELS: Record<JobStage, string> = {
-  script: "Script",
-  character: "Character",
-  voice: "Voice",
-  keyframes: "Keyframes",
-  shots: "Shots",
-  score: "Score",
-  edit: "Edit",
-  subtitles: "Subtitles",
+  /** Only generated films carry a real picture setting; seeds are 480P. */
+  resolution?: Resolution
 }
 
 export type Wallet = {
