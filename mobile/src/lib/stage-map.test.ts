@@ -24,11 +24,31 @@ describe("stage map", () => {
     expect(mapEventStage("nonsense")).toBeNull();
   });
 
+  it("pins the UI stage order", () => {
+    expect(UI_STAGES).toEqual([
+      "script",
+      "character",
+      "voice",
+      "keyframes",
+      "shots",
+      "score",
+      "edit",
+      "subtitles",
+    ]);
+  });
+
   it("computes progress from the stage position", () => {
     expect(stageProgress("script")).toBe(13);
+    expect(stageProgress("character")).toBe(25);
+    expect(stageProgress("voice")).toBe(38);
+    expect(stageProgress("keyframes")).toBe(50);
+    expect(stageProgress("shots")).toBe(63);
+    expect(stageProgress("score")).toBe(75);
+    expect(stageProgress("edit")).toBe(88);
     expect(stageProgress("subtitles")).toBe(100);
     expect(stageProgress("done")).toBe(100);
     expect(stageProgress(null)).toBe(0);
+    expect(stageProgress("error")).toBe(0);
     expect(UI_STAGES).toHaveLength(8);
   });
 });
