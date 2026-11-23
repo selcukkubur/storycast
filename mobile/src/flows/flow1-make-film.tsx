@@ -85,10 +85,11 @@ function GoldButton({ label, disabled, onPress, icon }: { label: string; disable
 /**
  * Recovery pass for records whose settle never landed: an errored film holding an open job, and
  * a finished film whose settle failed (the job is still open even though the video is safe).
- * `settle_pending === false` marks a record an earlier pass already closed. Any 4xx (409 closed,
+ * `settle_pending === false` marks a record an earlier pass already closed. A 4xx (409 closed,
  * 404 unknown, 401/400 refusal) is permanent — the server will answer the same way on every
- * launch — so it closes the record too and never retries. Settles by explicit id and never
- * adopts the job, so a film started while this runs keeps its own id and debit.
+ * launch — so it closes the record too and never retries; 429/408 stay pending and retry next
+ * launch. Settles by explicit id and never adopts the job, so a film started while this runs keeps
+ * its own id and debit.
  */
 async function settleStale(records: FilmRecord[]): Promise<void> {
   const stale = records
@@ -106,7 +107,7 @@ async function settleStale(records: FilmRecord[]): Promise<void> {
           ? await settleJobById(r.job_id!, "done", r.result.video)
           : await settleJobById(r.job_id!, "error")
       if (s.ok) await saveRecord({ ...r, refund: r.refund ?? s.refund ?? 0, settle_pending: false })
-      else if (s.status >= 400 && s.status < 500) await saveRecord({ ...r, settle_pending: false })
+      else if (s.status >= 400 && s.status < 500 && s.status !== 429 && s.status !== 408) await saveRecord({ ...r, settle_pending: false })
       else await saveRecord({ ...r, settle_pending: true }).catch(() => {})
     } catch {
       await saveRecord({ ...r, settle_pending: true }).catch(() => {})
@@ -1051,7 +1052,7 @@ export default function MakeAFilmFlow() {
               <Eyebrow tone="soft">Ticket used</Eyebrow>
               <Text className="mt-1.5 font-body-bold text-base text-ink">
                 {usedCost > 0 ? `${usedCost} ticket${usedCost === 1 ? "" : "s"} · ` : ""}
-                {credits} left in your book
+                {walletLoading || walletError ? "—" : credits} left in your book
               </Text>
               {settlePending ? (
                 <Text className="mt-1 text-xs font-body-bold text-coral">Ticket update pending — the film is safe in your library.</Text>
