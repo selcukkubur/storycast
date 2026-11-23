@@ -30,38 +30,6 @@ export type Film = {
   lang: string
 }
 
-export type JobStage =
-  | "script"
-  | "character"
-  | "voice"
-  | "keyframes"
-  | "shots"
-  | "score"
-  | "edit"
-  | "subtitles"
-
-export const STAGE_ORDER: JobStage[] = [
-  "script",
-  "character",
-  "voice",
-  "keyframes",
-  "shots",
-  "score",
-  "edit",
-  "subtitles",
-]
-
-export const STAGE_LABELS: Record<JobStage, string> = {
-  script: "Script",
-  character: "Character",
-  voice: "Voice",
-  keyframes: "Keyframes",
-  shots: "Shots",
-  score: "Score",
-  edit: "Edit",
-  subtitles: "Subtitles",
-}
-
 export type Wallet = {
   plan: Plan
   credits: number

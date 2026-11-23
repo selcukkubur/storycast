@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
+import { useEffect, useMemo, useState } from "react"
+import { AppState, FlatList, Image, Modal, Pressable, ScrollView, View } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated"
+import { useVideoPlayer, VideoView } from "expo-video"
 import { BellRing, Check, ChevronRight, Clapperboard, Clock, Image as ImageIcon, Lock, Mic, Music, PenLine, Play, Plus, Scissors, Subtitles, Ticket, UserRound, X } from "lucide-react-native"
 import { VStack } from "@/components/ui/vstack"
 import { HStack } from "@/components/ui/hstack"
@@ -13,22 +14,30 @@ import { router } from "expo-router"
 import { NARRATORS, LOOKS, TOPIC_CHIPS, WALLET, FILMS } from "@/src/flows/shared/mock-data"
 import { LANGUAGES, languageOf } from "@/src/flows/shared/languages"
 import { VOICES, voiceOf } from "@/src/flows/shared/voices"
-import { STAGE_LABELS, STAGE_ORDER, creditsFor, type Resolution } from "@/src/flows/shared/types"
+import { creditsFor, type Resolution } from "@/src/flows/shared/types"
+import { adoptJob, ensureDevice, ensureDeviceId, initBilling, settleFilm, startFilm, wallet, BillingError } from "@/src/lib/billing"
+import { newRecord, runFilm } from "@/src/lib/studio/pipeline"
+import { allRecords, type FilmRecord } from "@/src/lib/studio/store"
+import { studioData } from "@/src/lib/studio/data"
+import { UI_STAGES, mapEventStage, stageProgress, type UiStage } from "@/src/lib/stage-map"
+import type { JobEvent } from "@/src/lib/studio/types"
 
-type Step = "compose" | "gate" | "progress" | "result"
+type Phase = "compose" | "gate" | "progress" | "result" | "error"
 
 const EYEBROW = "font-body-bold text-[11px] uppercase tracking-[1px]"
 const NOCTURNE: readonly [string, string] = ["#2A3BC0", "#131A4E"]
+/** Settle is best-effort per spec §6: 3 attempts, then keep the film and flag the ticket as pending. */
+const SETTLE_TRIES = 3
 
-const STAGE_META: Record<(typeof STAGE_ORDER)[number], { Icon: typeof Play; line: string }> = {
-  script: { Icon: PenLine, line: "Writing tonight's story" },
-  character: { Icon: UserRound, line: "Designing the narrator" },
-  voice: { Icon: Mic, line: "Recording the narration" },
-  keyframes: { Icon: ImageIcon, line: "Painting the keyframes" },
-  shots: { Icon: Clapperboard, line: "Filming the shots" },
-  score: { Icon: Music, line: "Composing the score" },
-  edit: { Icon: Scissors, line: "Cutting the picture" },
-  subtitles: { Icon: Subtitles, line: "Adding word-by-word subtitles" },
+const STAGE_META: Record<UiStage, { Icon: typeof Play; label: string; line: string }> = {
+  script: { Icon: PenLine, label: "Script", line: "Writing tonight's story" },
+  character: { Icon: UserRound, label: "Character", line: "Designing the narrator" },
+  voice: { Icon: Mic, label: "Voice", line: "Recording the narration" },
+  keyframes: { Icon: ImageIcon, label: "Keyframes", line: "Painting the keyframes" },
+  shots: { Icon: Clapperboard, label: "Shots", line: "Filming the shots" },
+  score: { Icon: Music, label: "Score", line: "Composing the score" },
+  edit: { Icon: Scissors, label: "Edit", line: "Cutting the picture" },
+  subtitles: { Icon: Subtitles, label: "Subtitles", line: "Adding word-by-word subtitles" },
 }
 
 const CARD_SHADOW = {
@@ -72,8 +81,29 @@ function GoldButton({ label, disabled, onPress, icon }: { label: string; disable
   )
 }
 
+function ResumePrompt({ visible, onClose, onProgress }: { visible: boolean; onClose: () => void; onProgress: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View className="flex-1 items-center justify-center bg-black/60 px-6">
+        <View className="w-full rounded-3xl bg-ticket p-6">
+          <Text className="font-display text-xl text-ink">Welcome back</Text>
+          <Text className="mt-2 text-[13px] leading-5 text-ink-soft">
+            Production may have paused while Storycast was in the background. Keep the app open until the film is ready.
+          </Text>
+          <View className="mt-5">
+            <GoldButton label="Back to production" onPress={onClose} />
+          </View>
+          <Button variant="outline" className="mt-2 min-h-12 rounded-2xl" onPress={onProgress}>
+            <ButtonText>Check progress</ButtonText>
+          </Button>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 export default function MakeAFilmFlow() {
-  const [step, setStep] = useState<Step>("compose")
+  const [phase, setPhase] = useState<Phase>("compose")
   const [topic, setTopic] = useState("")
   const [narratorId, setNarratorId] = useState(NARRATORS[0].id)
   const [look, setLook] = useState(LOOKS[0])
@@ -86,33 +116,146 @@ export default function MakeAFilmFlow() {
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [gateAnswer, setGateAnswer] = useState("")
   const [gateError, setGateError] = useState("")
-  const [stageIndex, setStageIndex] = useState(0)
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [activeStage, setActiveStage] = useState<UiStage>("script")
+  const [lastEvent, setLastEvent] = useState("")
+  const [record, setRecord] = useState<FilmRecord | null>(null)
+  const [errorText, setErrorText] = useState("")
+  const [refund, setRefund] = useState<number | null>(null)
+  const [credits, setCredits] = useState(WALLET.credits)
+  const [resumable, setResumable] = useState<FilmRecord | null>(null)
+  const [away, setAway] = useState(false)
+  const [showResumePrompt, setShowResumePrompt] = useState(false)
+  const [settlePending, setSettlePending] = useState(false)
+  // One server debit per gate: produce() keeps the gate visible until startFilm answers.
+  const [starting, setStarting] = useState(false)
 
-  const credits = WALLET.credits
   const cost = creditsFor(minutes, resolution)
   const canAfford = cost <= credits && minutes <= WALLET.maxMinutes
   const narrator = useMemo(() => NARRATORS.find((n) => n.id === narratorId) ?? NARRATORS[0], [narratorId])
-  const poster = FILMS[Math.max(0, NARRATORS.findIndex((n) => n.id === narratorId)) % FILMS.length].poster
+
+  // Hooks must run on every render, so the player is hoisted above the phase returns.
+  const videoUrl: string = record?.result?.video ?? FILMS[0].video
+  const resultPlayer = useVideoPlayer(videoUrl)
+
+  // useVideoPlayer only takes an initial source; point it at the finished film when one lands.
+  useEffect(() => {
+    resultPlayer.replace(videoUrl)
+  }, [videoUrl])
 
   useEffect(() => {
-    if (step !== "progress") return
-    timer.current = setInterval(() => {
-      setStageIndex((i) => {
-        if (i + 1 >= STAGE_ORDER.length) {
-          if (timer.current) clearInterval(timer.current)
-          setStep("result")
-          return i
-        }
-        return i + 1
-      })
-    }, 900)
-    return () => {
-      if (timer.current) clearInterval(timer.current)
-    }
-  }, [step])
+    (async () => {
+      try {
+        await initBilling()
+        const { device, idfv } = await ensureDeviceId()
+        await ensureDevice(device, idfv)
+        setCredits((await wallet()).credits)
+        const running = (await allRecords()).find((r) => r.status === "running" && r.job_id && r.state?.plan)
+        setResumable(running ?? null)
+      } catch {
+        /* composer keeps the last known ticket count; a setup/network failure surfaces on the error screen */
+      }
+    })()
+  }, [])
 
-  const title = topic.trim() || "Your first story"
+  useEffect(() => {
+    if (phase !== "progress") return
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s !== "active") setAway(true)
+      else if (away) {
+        setAway(false)
+        setShowResumePrompt(true)
+      }
+    })
+    return () => sub.remove()
+  }, [phase, away])
+
+  async function produce() {
+    try {
+      const data = await studioData()
+      const cast = data.characters.find((c) => c.id === narratorId)
+      if (!cast) throw new Error("narrator unavailable")
+      const style = data.styles.find((s) => s.label === look) ?? data.styles[0]
+      const job = await startFilm(minutes, resolution)
+      const rec = newRecord({
+        topic: topic.trim(),
+        style: style.id,
+        minutes,
+        lang: langCode,
+        style_url: style.ref,
+        character_url: "",
+        character_name: "",
+        character_id: cast.id,
+        voice: cast.voice,
+        resolution,
+      })
+      rec.watermark = job.watermark
+      rec.job_id = job.jobId
+      setRecord(rec)
+      setLastEvent("")
+      setActiveStage("script")
+      setSettlePending(false)
+      setRefund(null)
+      setErrorText("")
+      setPhase("progress")
+      await finish(rec, job.cost)
+    } catch (e) {
+      if (e instanceof BillingError && (e.status === 402 || e.status === 422)) {
+        setPhase("compose")
+        // The server is authoritative: re-read the wallet so the composer's upsell copy matches.
+        setCredits((await wallet().catch(() => ({ credits: 0 }))).credits)
+        return
+      }
+      setErrorText(String((e as Error).message ?? e))
+      setRefund(null)
+      setPhase("error")
+    }
+  }
+
+  /** Settle is idempotent on failure (billing keeps the job id), so retry silently before giving up. */
+  async function settleWithRetry(outcome: "done" | "error", videoUrl?: string) {
+    type Settled = Awaited<ReturnType<typeof settleFilm>>
+    const failed = (): Settled => ({ ok: false, status: 0, refund: 0, creditsLeft: undefined })
+    let s = await settleFilm(outcome, videoUrl).catch(failed)
+    for (let i = 1; i < SETTLE_TRIES && !s.ok; i++) {
+      await new Promise((res) => setTimeout(res, 400 * i))
+      s = await settleFilm(outcome, videoUrl).catch(failed)
+    }
+    return s
+  }
+
+  async function finish(rec: FilmRecord, spent: number) {
+    try {
+      const done = await runFilm(rec, (e: JobEvent) => {
+        setLastEvent(e.msg)
+        const ui = mapEventStage(e.stage)
+        if (ui && ui !== "done" && ui !== "error") setActiveStage(ui)
+      })
+      if (done.status !== "done" || !done.result.video) throw new Error(done.error || "the film could not be finished")
+      const s = await settleWithRetry("done", done.result.video)
+      setRecord(done)
+      if (s.ok) setCredits(s.creditsLeft ?? Math.max(0, credits - spent))
+      else setSettlePending(true)
+      setPhase("result")
+    } catch (e) {
+      const s = await settleWithRetry("error")
+      setRefund(s.ok ? s.refund ?? 0 : null)
+      setErrorText(String((e as Error).message ?? e))
+      setPhase("error")
+    }
+  }
+
+  async function resume(rec: FilmRecord) {
+    if (rec.job_id) adoptJob(rec.job_id)
+    setRecord(rec)
+    setResumable(null)
+    setSettlePending(false)
+    setRefund(null)
+    setErrorText("")
+    setPhase("progress")
+    await finish(rec, 0)
+  }
+
+  const title = topic.trim() || record?.topic || "Your first story"
 
   /* ================================================
      FLOW: Make a Film
@@ -123,7 +266,7 @@ export default function MakeAFilmFlow() {
      EXIT:   "Make the film" → Parental gate
      BRANCH: cost > tickets → upsell note (Flow B)
      ================================================ */
-  if (step === "compose") {
+  if (phase === "compose") {
     return (
       <View className="flex-1 bg-paper">
         <ScrollView contentContainerClassName="pb-52">
@@ -160,6 +303,24 @@ export default function MakeAFilmFlow() {
 
           <Animated.View entering={FadeInDown.duration(450)}>
             <VStack space="lg" className="-mt-14 px-5">
+              {resumable ? (
+                <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
+                  <Eyebrow tone="soft">Unfinished film</Eyebrow>
+                  <Text className="mt-2 font-display text-xl leading-6 text-ink" numberOfLines={2}>
+                    {resumable.topic || resumable.title || "Last night's story"}
+                  </Text>
+                  <Text className="mt-1.5 text-[13px] leading-5 text-ink-soft">
+                    Production stopped before the film was finished. Pick up where it left off — no new ticket is used.
+                  </Text>
+                  <View className="mt-4">
+                    <GoldButton label="Resume film" onPress={() => void resume(resumable)} icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />} />
+                  </View>
+                  <Button variant="outline" className="mt-2 min-h-12 rounded-2xl" onPress={() => setResumable(null)}>
+                    <ButtonText>Not now</ButtonText>
+                  </Button>
+                </View>
+              ) : null}
+
               <View className="rounded-3xl bg-ticket p-5" style={CARD_SHADOW}>
                 <Eyebrow tone="soft">Tonight's topic</Eyebrow>
                 <View className="mt-3 rounded-2xl bg-paper px-4">
@@ -480,6 +641,15 @@ export default function MakeAFilmFlow() {
           </View>
         </Modal>
 
+        <ResumePrompt
+          visible={showResumePrompt}
+          onClose={() => setShowResumePrompt(false)}
+          onProgress={() => {
+            setShowResumePrompt(false)
+            setPhase("progress")
+          }}
+        />
+
         <View className="absolute bottom-0 left-0 right-0 border-t border-ink/10 bg-paper px-5 pb-8 pt-3">
           <GoldButton
             label="Make the film"
@@ -487,7 +657,7 @@ export default function MakeAFilmFlow() {
             onPress={() => {
               setGateError("")
               setGateAnswer("")
-              setStep("gate")
+              setPhase("gate")
             }}
             icon={<Ticket size={16} stroke="#1B1330" />}
           />
@@ -508,7 +678,7 @@ export default function MakeAFilmFlow() {
      ENTRY:  Composer "Make the film"
      EXIT:   Solved → Production; Cancel → Composer
      ================================================ */
-  if (step === "gate") {
+  if (phase === "gate") {
     return (
       <LinearGradient colors={NOCTURNE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
         <View className="absolute left-1/4 top-16 h-40 w-40 rounded-full border border-marigold/20" />
@@ -534,19 +704,22 @@ export default function MakeAFilmFlow() {
               </View>
               {gateError ? <Text className="mt-2 text-sm text-red-700">{gateError}</Text> : null}
               <HStack space="sm" className="mt-5">
-                <Button variant="outline" className="min-h-12 flex-1 rounded-2xl" onPress={() => setStep("compose")}>
+                <Button variant="outline" className="min-h-12 flex-1 rounded-2xl" onPress={() => setPhase("compose")}>
                   <ButtonText>Cancel</ButtonText>
                 </Button>
                 <View className="flex-1">
                   <GoldButton
                     label="Start"
+                    disabled={starting}
                     onPress={() => {
-                      if (gateAnswer.trim() === "32") {
-                        setStageIndex(0)
-                        setStep("progress")
-                      } else {
+                      if (gateAnswer.trim() !== "32") {
                         setGateError("That's not it — try again.")
+                        return
                       }
+                      if (starting) return
+                      // produce() owns the progress phase so a startFilm failure stays in the composer.
+                      setStarting(true)
+                      void produce().finally(() => setStarting(false))
                     }}
                   />
                 </View>
@@ -560,18 +733,17 @@ export default function MakeAFilmFlow() {
 
   /* ================================================
      FLOW: Make a Film
-     SCREEN 3 of 4: Production
+     SCREEN 3 of 5: Production
      PLATFORM: React Native
      ------------------------------------------------
-     ENTRY:  Parental gate solved
+     ENTRY:  Parental gate solved / Resume
      EXIT:   All stages done → Result
-     BRANCH: safe to leave; job continues (notifications)
+     BRANCH: keep the app open (AppState guard); failure → error screen
      ================================================ */
-  if (step === "progress") {
-    const pct = Math.round(((stageIndex + 1) / STAGE_ORDER.length) * 100)
-    const stage = STAGE_ORDER[stageIndex]
-    const meta = STAGE_META[stage]
-    const readyIn = minutes * 4 + 2
+  if (phase === "progress") {
+    const pct = stageProgress(activeStage)
+    const idx = UI_STAGES.indexOf(activeStage)
+    const meta = STAGE_META[activeStage]
     return (
       <LinearGradient colors={NOCTURNE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
         <View className="absolute -left-16 top-24 h-56 w-56 rounded-full border border-marigold/15" />
@@ -588,7 +760,7 @@ export default function MakeAFilmFlow() {
               </VStack>
               <View className="flex-row items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5">
                 <Clock size={12} stroke="#FFB627" />
-                <Text className="text-[11px] font-body-bold text-ticket/80">about {readyIn} min</Text>
+                <Text className="text-[11px] font-body-bold text-ticket/80">keep open</Text>
               </View>
             </HStack>
 
@@ -615,16 +787,16 @@ export default function MakeAFilmFlow() {
                 <meta.Icon size={19} stroke="#1B1330" />
               </View>
               <VStack space="xs" className="flex-1">
-                <Text className={`${EYEBROW} text-marigold`}>Now: {STAGE_LABELS[stage]}</Text>
-                <Text className="text-sm font-body-semibold text-ticket">{meta.line}</Text>
+                <Text className={`${EYEBROW} text-marigold`}>Now: {meta.label}</Text>
+                <Text className="text-sm font-body-semibold text-ticket">{lastEvent || meta.line}</Text>
               </VStack>
               <Spinner size="small" />
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingTop: 22, paddingBottom: 6 }}>
-              {STAGE_ORDER.map((st, i) => {
-                const done = i < stageIndex
-                const active = i === stageIndex
+              {UI_STAGES.map((st, i) => {
+                const done = i < idx
+                const active = i === idx
                 const Icon = STAGE_META[st].Icon
                 return (
                   <VStack key={st} space="xs" className="w-16 items-center">
@@ -635,7 +807,7 @@ export default function MakeAFilmFlow() {
                       <Icon size={17} stroke={active ? "#1B1330" : done ? "#FFB627" : "#FFF9F040"} />
                     </View>
                     <Text className={`text-[10px] uppercase tracking-[0.5px] ${active ? "font-body-bold text-marigold" : done ? "text-ticket/60" : "text-ticket/30"}`}>
-                      {STAGE_LABELS[st]}
+                      {STAGE_META[st].label}
                     </Text>
                   </VStack>
                 )
@@ -647,18 +819,57 @@ export default function MakeAFilmFlow() {
                 <BellRing size={15} stroke="#FFB627" />
               </View>
               <Text className="flex-1 text-[13px] leading-5 text-ticket/70">
-                Safe to leave — we'll nudge you the moment the film is ready.
+                Keep Storycast open — production pauses if the app goes to the background.
               </Text>
             </View>
           </View>
         </ScrollView>
+
+        <ResumePrompt
+          visible={showResumePrompt}
+          onClose={() => setShowResumePrompt(false)}
+          onProgress={() => setShowResumePrompt(false)}
+        />
       </LinearGradient>
     )
   }
 
   /* ================================================
      FLOW: Make a Film
-     SCREEN 4 of 4: Result
+     SCREEN 4 of 5: Stopped
+     PLATFORM: React Native
+     ------------------------------------------------
+     ENTRY:  startFilm/pipeline/settle failure
+     EXIT:   Try again → Composer; Resume → same job
+     ================================================ */
+  if (phase === "error") {
+    return (
+      <View className="flex-1 justify-center bg-paper px-6">
+        <View className="rounded-3xl bg-ticket p-6" style={CARD_SHADOW}>
+          <Eyebrow tone="soft">Production stopped</Eyebrow>
+          <Text className="mt-2 font-display text-2xl text-ink">That film didn't finish</Text>
+          <Text className="mt-2 text-[13px] leading-5 text-ink-soft">{errorText}</Text>
+          {refund !== null ? (
+            <Text className="mt-2 text-[13px] font-body-bold text-mint">
+              {refund > 0 ? `${refund} ticket${refund === 1 ? "" : "s"} refunded to your book.` : "No tickets were used."}
+            </Text>
+          ) : null}
+          <View className="mt-5">
+            <GoldButton label="Try again" onPress={() => setPhase("compose")} />
+          </View>
+          {record?.job_id ? (
+            <Button variant="outline" className="mt-2 min-h-12 rounded-2xl" onPress={() => record && resume(record)}>
+              <ButtonText>Resume film</ButtonText>
+            </Button>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
+  /* ================================================
+     FLOW: Make a Film
+     SCREEN 5 of 5: Result
      PLATFORM: React Native
      ------------------------------------------------
      ENTRY:  Production completed
@@ -675,45 +886,39 @@ export default function MakeAFilmFlow() {
             </View>
           </HStack>
 
-          <View className="overflow-hidden rounded-3xl bg-night" style={CARD_SHADOW}>
-            <Image source={poster} className="aspect-[4/3] w-full" resizeMode="cover" />
-            <LinearGradient
-              colors={["transparent", "rgba(20,28,87,0.55)", "rgba(13,18,60,0.95)"]}
-              locations={[0.35, 0.7, 1]}
-              style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 48 }}
-            >
-              <Text className="font-display text-2xl leading-7 text-ticket" numberOfLines={2}>
-                {title}
-              </Text>
-              <HStack className="mt-1 justify-between">
-                <Text className="text-xs text-ticket/70">
-                  {narrator.name} · {look}
-                </Text>
-                <Text className={`${EYEBROW} text-marigold`}>{minutes} min</Text>
-              </HStack>
-            </LinearGradient>
-            <View className="absolute inset-0 items-center justify-center">
-              <View
-                className="rounded-full border-2 border-coral/70 bg-marigold p-5"
-                style={{ shadowColor: "#000", shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }}
-              >
-                <Play size={26} stroke="#1B1330" fill="#1B1330" />
-              </View>
-            </View>
+          <View className="overflow-hidden rounded-3xl bg-black" style={CARD_SHADOW}>
+            <VideoView player={resultPlayer} style={{ width: "100%", aspectRatio: 16 / 9 }} contentFit="contain" nativeControls />
           </View>
+
+          <VStack space="xs">
+            <Text className="font-display text-2xl leading-7 text-ink" numberOfLines={2}>
+              {record?.result?.title || title}
+            </Text>
+            <Text className="text-xs text-ink-soft">
+              {record?.style_label ?? look} · {record?.minutes ?? minutes} min
+            </Text>
+          </VStack>
 
           <View className="flex-row overflow-hidden rounded-2xl border border-ink/10 bg-ticket" style={CARD_SHADOW}>
             <View className="flex-1 p-4">
               <Eyebrow tone="soft">Ticket used</Eyebrow>
               <Text className="mt-1.5 font-body-bold text-base text-ink">
-                {cost} ticket{cost === 1 ? "" : "s"} · {credits - cost} left in your book
+                {cost > 0 ? `${cost} ticket${cost === 1 ? "" : "s"} · ` : ""}
+                {credits} left in your book
               </Text>
+              {settlePending ? (
+                <Text className="mt-1 text-xs font-body-bold text-coral">Ticket update pending — the film is safe in your library.</Text>
+              ) : null}
             </View>
           </View>
 
           <VStack space="sm">
-            <GoldButton label="Watch now" onPress={() => router.push({ pathname: "/watch", params: { id: FILMS[0].id } })} icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />} />
-            <Button variant="outline" className="min-h-[54px] rounded-2xl" onPress={() => setStep("compose")}>
+            <GoldButton
+              label="Watch now"
+              onPress={() => router.push({ pathname: "/watch", params: { id: record?.id } })}
+              icon={<Play size={15} stroke="#1B1330" fill="#1B1330" />}
+            />
+            <Button variant="outline" className="min-h-[54px] rounded-2xl" onPress={() => setPhase("compose")}>
               <ButtonText>Make another</ButtonText>
             </Button>
           </VStack>
